@@ -441,6 +441,7 @@ def delineate(bfe_cross_sections, contours):
             print 'Left: Contour not found'
         except Exception as e:
             print 'Left: unknown exception:', str(e)
+            raise
 
         # Reset for next BFE/XS
         last_bfe_xs = current_bfe_xs
@@ -530,6 +531,7 @@ def delineate(bfe_cross_sections, contours):
             print 'Right: Contour not found'
         except Exception as e:
             print 'Right: unknown exception:', str(e)
+            raise
 
         # Reset for next BFE/XS
         last_bfe_xs = current_bfe_xs
@@ -558,7 +560,7 @@ def _get_contour(contours, elevation):
     for contour in contours:
         if contour.elevation == elevation:
             return contour
-    raise ContourNotFound
+    raise ContourNotFound(elevation)
 
 
 def _clip_to_bfe(contour, point1, point2):

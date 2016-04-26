@@ -563,6 +563,15 @@ class FilterCrossingLines(object):
                     current_line.num_crosses += 1
                     current_line.crossing_lines.append(temp_line)
 
+        if not True:
+            for i in range(len(self.lines)):
+                self.lines[i].number = i
+
+            for line in self.lines:
+                print '\nline', line.number, 'intersects: ',
+                for other_line in line.crossing_lines:
+                    print other_line.number, ', ',
+
     def _lines_cross(self):
         """
         Returns true if num_crosses is > 0 for any line in self.lines, else false
@@ -575,14 +584,19 @@ class FilterCrossingLines(object):
 
     def _remove_last_line(self):
         """
-        Removes last line from self.lines (pop(0)). Updates num_crosses and intersect_lines for all lines
-        the first line intersects
+        Removes last line from self.lines (pop(-1)). Updates num_crosses and intersect_lines for all lines
+        the last line intersects
         """
         # Remove last line
         last_line = self.lines.pop(-1)
 
-        if last_line.num_intersect == 0 or last_line.crossing_lines == []:
+        if last_line.num_crosses == 0 or last_line.crossing_lines == []:
             raise NoIntersection
+
+        # print '\nremoving line', last_line.number
+        # print '\tline', last_line.number, 'intersects: ',
+        # for other_line in last_line.crossing_lines:
+        #     print other_line.number, ', ',
 
         # Update all lines previously crossed by last_line
         for current_line in last_line.crossing_lines:
@@ -591,13 +605,12 @@ class FilterCrossingLines(object):
 
             # Remove reference to last_line
             for i, test_line in enumerate(current_line.crossing_lines):
-                if test_line is current_line:
+                if test_line is last_line:
                     current_line.crossing_lines.pop(i)
                     break
+            else:
                 # Should never get here
-                raise Exception
-
-
+                raise Exception("should never get here")
 
 
 def _sort_lines(x_lines1, x_lines2, low_contour, high_contour):
@@ -611,25 +624,23 @@ def _sort_lines(x_lines1, x_lines2, low_contour, high_contour):
     sorted_lines = x_lines1 + x_lines2
     sorted_lines.sort(key=lambda x: low_contour.project(x.first_point))
 
-    if True:
+    if not True:
         for i, line in enumerate(sorted_lines):
-            pyplot.plot(line.shapely_geo.xy[0], line.shapely_geo.xy[1], color='purple', linewidth=1.5, marker='^')
-            #midpoint = line.mid_point()
-            #midpoint.label(text=i)
-
-    # Count intersections and remove worst offenders
-    _count_intersections(sorted_lines)
-    sorted_lines = _delete_intersections(sorted_lines, 2)
-
-    # Remove rest of  intersections
-    _count_intersections(sorted_lines)
-    sorted_lines = _delete_intersections(sorted_lines, 1)
-
-    if True:
-        for i, line in enumerate(sorted_lines):
-            pyplot.plot(line.shapely_geo.xy[0], line.shapely_geo.xy[1], color='orange', linewidth=1, marker='^')
+            pyplot.plot(line.shapely_geo.xy[0], line.shapely_geo.xy[1], color='black', linewidth=1, marker='^')
             midpoint = line.mid_point()
             midpoint.label(text=i)
+
+    my_filter = FilterCrossingLines(sorted_lines)
+    sorted_lines = my_filter.filter()
+    print 'length of sorted_lines is ', len(sorted_lines)
+    sorted_lines.sort(key=lambda x: low_contour.project(x.first_point))
+    sorted_lines.sort(key=lambda x: high_contour.project(x.last_point))
+
+    if not True:
+        for i, line in enumerate(sorted_lines):
+            pyplot.plot(line.shapely_geo.xy[0], line.shapely_geo.xy[1], color='orange', linewidth=1.5, marker='^')
+            # midpoint = line.mid_point()
+            # midpoint.label(text=i)
     return sorted_lines
 
 

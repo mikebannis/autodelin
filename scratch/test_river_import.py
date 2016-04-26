@@ -44,7 +44,8 @@ def main():
 
     print 'importing contours... '
 
-    contour_filename = 'GHC/middle_contour.shp'
+    contour_filename = 'shapes/carp_contour_clip.shp'
+    # contour_filename = 'GHC/middle_contour.shp'
     contours = ad.import_contours(contour_filename, 'ContourEle', chatty=True)
     crs = ad.get_crs(contour_filename)
     print 'Contours imported. Drawing'
@@ -73,10 +74,10 @@ def main():
         xs.river_intersect.label(str(xs.id))
         xs.left_extent.plot(marker='o')
         xs.right_extent.plot(marker='^')
-        posi, _, _ = ad._calc_extent_position(xs, xs.left_extent, contours)
-        xs.left_extent.label(str(round(posi, 2)))
-        posi, _, _ = ad._calc_extent_position(xs, xs.right_extent, contours)
-        xs.right_extent.label(str(round(posi, 2)))
+        # posi, _, _ = ad._calc_extent_position(xs, xs.left_extent, contours)
+        # xs.left_extent.label(str(round(posi, 2)))
+        # posi, _, _ = ad._calc_extent_position(xs, xs.right_extent, contours)
+        # xs.right_extent.label(str(round(posi, 2)))
 
     combo_list = combo_list[::-1]
 
@@ -90,19 +91,19 @@ def main():
     print len(combo_list), 'BFE/XS completed in ', (time/len(combo_list)), 'per item'
 
 
-    print len(left_bound)
+    # print len(left_bound)
     for i, line in enumerate(left_bound):
-        if i % 2 == 0:
-            line.plot(color='blue', linewidth=2)
-        else:
-            line.plot(color='pink', linewidth=2)
+         if i % 2 == 0:
+             line.plot(color='blue', linewidth=2)
+         else:
+             line.plot(color='pink', linewidth=2)
 
-    print len(right_bound)
+    # print len(right_bound)
     for i, line in enumerate(right_bound):
-        if i % 2 == 0:
-            line.plot(color='blue', linewidth=2)
-        else:
-            line.plot(color='pink', linewidth=2)
+         if i % 2 == 0:
+             line.plot(color='blue', linewidth=2)
+         else:
+             line.plot(color='pink', linewidth=2)
 
     print 'total process complete in', (dt.now() - first_time)
 
