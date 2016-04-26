@@ -639,7 +639,7 @@ def _calc_extent_position(xs, extent, contours):
             return None
 
     if type(xs) is BFE:
-        print 'BFE passed to _calc_right_position(). Aborting'
+        print 'BFE passed to _calc_extent_position(). Aborting'
         raise
     high_contour = _get_contour(contours, math.ceil(xs.elevation))
     high_contour = _closest_contour_segment(high_contour, extent)
