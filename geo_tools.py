@@ -347,6 +347,96 @@ class ADPoint(object):
         pyplot.annotate(str(text), xy=(x, y), *args, **kwargs)
 
 
+class FilterCrossingLines(object):
+    """
+    Used by _sort_lines() to remove intersecting crossing lines. Preferentially removes lines that
+    cross the most other lines. Each crossing line keeps a list (crossing list) of other lines it intersects. When a
+    crossing line is removed the crossing list for the other lines is intersects is up dated. This allows the removal
+    of the fewest number of lines.
+    """
+    def __init__(self, lines):
+        self.lines = lines
+
+    def filter(self):
+        """
+        Filters lines in self.lines and intelligently removes intersecting lines. Returns list of resulting lines
+        :return: list of ADPolyline
+        """
+        self._calc_intersections()
+        while self._lines_cross():
+            self.lines.sort(key=lambda x: x.num_crosses)
+            self._remove_last_line()
+        assert self.lines != []
+        return self.lines
+
+    def _calc_intersections(self):
+        """
+        Calculates number of intersections for each line in self.lines and which lines intersect.
+        Stores number of intersections in line.num_crosses
+        Stores list of intersecting ADPolylines in line.crossing_lines
+        """
+        for current_index, current_line in enumerate(self.lines):
+            current_line.num_crosses = 0
+            current_line.crossing_lines = []
+            # Test against all lines
+            for temp_index, temp_line in enumerate(self.lines):
+                if current_index == temp_index:
+                    # Ignore current line
+                    continue
+                if current_line.crosses(temp_line):
+                    current_line.num_crosses += 1
+                    current_line.crossing_lines.append(temp_line)
+
+        # if not True:
+        #     for i in range(len(self.lines)):
+        #         self.lines[i].number = i
+        #
+        #     for line in self.lines:
+        #         print '\nline', line.number, 'intersects: ',
+        #         for other_line in line.crossing_lines:
+        #             print other_line.number, ', ',
+
+    def _lines_cross(self):
+        """
+        Returns true if num_crosses is > 0 for any line in self.lines, else false
+        :return: Bool
+        """
+        for line in self.lines:
+            if line.num_crosses > 0:
+                return True
+        return False
+
+    def _remove_last_line(self):
+        """
+        Removes last line from self.lines (pop(-1)). Updates num_crosses and intersect_lines for all lines
+        the last line intersects
+        """
+        # Remove last line
+        last_line = self.lines.pop(-1)
+
+        if last_line.num_crosses == 0 or last_line.crossing_lines == []:
+            raise NoIntersection
+
+        # print '\nremoving line', last_line.number
+        # print '\tline', last_line.number, 'intersects: ',
+        # for other_line in last_line.crossing_lines:
+        #     print other_line.number, ', ',
+
+        # Update all lines previously crossed by last_line
+        for current_line in last_line.crossing_lines:
+            current_line.num_crosses -= 1
+            assert current_line.num_crosses >= 0
+
+            # Remove reference to last_line
+            for i, test_line in enumerate(current_line.crossing_lines):
+                if test_line is last_line:
+                    current_line.crossing_lines.pop(i)
+                    break
+            else:
+                # Should never get here
+                raise Exception("should never get here")
+
+
 def draw_line_between_contours(low_contour, high_contour, last_pos, current_pos):
     """
     Interpolates line from low contour to high_contour based on last_pos and current_pos
@@ -427,8 +517,8 @@ def draw_line_between_contours(low_contour, high_contour, last_pos, current_pos)
             midpoint.label(text=i)
 
     # Fix zip-zags in boundary -----------------------------------------------------------
-    crossing_lines = _fix_zig_zags(crossing_lines, low_contour, 'first_point')
-    crossing_lines = _fix_zig_zags(crossing_lines, high_contour, 'last_point')
+    # crossing_lines = _fix_zig_zags(crossing_lines, low_contour, 'first_point')
+    # crossing_lines = _fix_zig_zags(crossing_lines, high_contour, 'last_point')
 
     # Add distances along contour1 to crossing lines --------------------------------------
     # Lines should already be sorted
@@ -529,90 +619,6 @@ def _fix_zig_zags(crossing_lines, contour, point):
         return crossing_lines
 
 
-class FilterCrossingLines(object):
-    def __init__(self, lines):
-        self.lines = lines
-
-    def filter(self):
-        """
-        Filters lines in self.lines and intelligently removes intersecting lines. Returns list of resulting lines
-        :return: list of ADPolyline
-        """
-        self._calc_intersections()
-        while self._lines_cross():
-            self.lines.sort(key=lambda x: x.num_crosses)
-            self._remove_last_line()
-        assert self.lines != []
-        return self.lines
-
-    def _calc_intersections(self):
-        """
-        Calculates number of intersections for each line in self.lines and which lines intersect.
-        Stores number of intersections in line.num_crosses
-        Stores list of intersecting ADPolylines in line.crossing_lines
-        """
-        for current_index, current_line in enumerate(self.lines):
-            current_line.num_crosses = 0
-            current_line.crossing_lines = []
-            # Test against all lines
-            for temp_index, temp_line in enumerate(self.lines):
-                if current_index == temp_index:
-                    # Ignore current line
-                    continue
-                if current_line.crosses(temp_line):
-                    current_line.num_crosses += 1
-                    current_line.crossing_lines.append(temp_line)
-
-        if not True:
-            for i in range(len(self.lines)):
-                self.lines[i].number = i
-
-            for line in self.lines:
-                print '\nline', line.number, 'intersects: ',
-                for other_line in line.crossing_lines:
-                    print other_line.number, ', ',
-
-    def _lines_cross(self):
-        """
-        Returns true if num_crosses is > 0 for any line in self.lines, else false
-        :return: Bool
-        """
-        for line in self.lines:
-            if line.num_crosses > 0:
-                return True
-        return False
-
-    def _remove_last_line(self):
-        """
-        Removes last line from self.lines (pop(-1)). Updates num_crosses and intersect_lines for all lines
-        the last line intersects
-        """
-        # Remove last line
-        last_line = self.lines.pop(-1)
-
-        if last_line.num_crosses == 0 or last_line.crossing_lines == []:
-            raise NoIntersection
-
-        # print '\nremoving line', last_line.number
-        # print '\tline', last_line.number, 'intersects: ',
-        # for other_line in last_line.crossing_lines:
-        #     print other_line.number, ', ',
-
-        # Update all lines previously crossed by last_line
-        for current_line in last_line.crossing_lines:
-            current_line.num_crosses -= 1
-            assert current_line.num_crosses >= 0
-
-            # Remove reference to last_line
-            for i, test_line in enumerate(current_line.crossing_lines):
-                if test_line is last_line:
-                    current_line.crossing_lines.pop(i)
-                    break
-            else:
-                # Should never get here
-                raise Exception("should never get here")
-
-
 def _sort_lines(x_lines1, x_lines2, low_contour, high_contour):
     """
     Merges x_lines1 and x_lines2 by distance along center line
@@ -620,19 +626,19 @@ def _sort_lines(x_lines1, x_lines2, low_contour, high_contour):
     :param x_lines2: list of ADPolyline
     :return: list of ADPolylines
     """
-    # Merge and sort x_lines1 and x_lines2
-    sorted_lines = x_lines1 + x_lines2
-    sorted_lines.sort(key=lambda x: low_contour.project(x.first_point))
-
     if not True:
         for i, line in enumerate(sorted_lines):
             pyplot.plot(line.shapely_geo.xy[0], line.shapely_geo.xy[1], color='black', linewidth=1, marker='^')
             midpoint = line.mid_point()
             midpoint.label(text=i)
 
+    # Merge and sort x_lines1 and x_lines2
+    sorted_lines = x_lines1 + x_lines2
+
+    # Removing intersecting crossing lines
     my_filter = FilterCrossingLines(sorted_lines)
     sorted_lines = my_filter.filter()
-    print 'length of sorted_lines is ', len(sorted_lines)
+
     sorted_lines.sort(key=lambda x: low_contour.project(x.first_point))
     sorted_lines.sort(key=lambda x: high_contour.project(x.last_point))
 
@@ -642,36 +648,6 @@ def _sort_lines(x_lines1, x_lines2, low_contour, high_contour):
             # midpoint = line.mid_point()
             # midpoint.label(text=i)
     return sorted_lines
-
-
-def _count_intersections(lines):
-    """
-    Counts intersections between each line in lines with all the other lines. Appends number of intersections to
-    line.num_intersections
-    :param lines: list of ADPolyline
-    """
-    for current_index, current_line in enumerate(lines):
-        # Count intersections with other lines
-        current_line.num_intersections = 0
-        for temp_index, temp_line in enumerate(lines):
-            if current_index == temp_index:
-                continue
-            if current_line.crosses(temp_line):
-                current_line.num_intersections += 1
-
-
-def _delete_intersections(lines, number):
-    """
-    Returns every line in lines where line.num_intersections < number
-    :param lines: list of ADPolyline
-    :param number: int
-    :return: list of ADPolyline
-    """
-    good_lines = []
-    for line in lines:
-        if line.num_intersections < number:
-            good_lines.append(line)
-    return good_lines
 
 
 def _remove_intersecting_lines(crossing_lines, contour):

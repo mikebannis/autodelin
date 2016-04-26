@@ -1,4 +1,3 @@
-
-
+*.lock
 .idea
 *.pyc
