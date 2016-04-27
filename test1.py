@@ -1,4 +1,4 @@
-import autodelin as ad
+import autodelin.logic as ad
 from matplotlib import pyplot
 from datetime import datetime as dt
 import fiona
@@ -32,24 +32,24 @@ def trim_bfe_xs(bfe_xs_list, start=None, end=None):
 def main():
     first_time = dt.now()
 
-    out_filename = '../GHC/carp_boundary.shp'
-    river = ad.ez_river_import('../GHC/ghc_mainstem.shp')
+    out_filename = 'GHC/carp_boundary.shp'
+    river = ad.ez_river_import('GHC/ghc_mainstem.shp')
 
-    xss = ad.ez_xs_import('../GHC/carp_XS.shp', 'ProfileM')
-    bfes = ad.ez_bfe_import('../GHC/carp_bfe.shp', 'Elevation')
+    xss = ad.ez_xs_import('GHC/carp_XS.shp', 'ProfileM')
+    bfes = ad.ez_bfe_import('GHC/carp_bfe.shp', 'Elevation')
 
     ad.calc_xs_stations(xss, river)
-    ad.ez_extents_import('../GHC/all_extents.shp', 'XS_ID', 'Position', 'Profile', '100-yr', 'Elevation', xss)
+    ad.ez_extents_import('GHC/all_extents.shp', 'XS_ID', 'Position', 'Profile', '100-yr', 'Elevation', xss)
     ad.calc_bfe_stations(bfes, river)
 
     print 'importing contours... '
 
     # contour_filename = 'shapes/carp_contour_clip.shp'
-    contour_filename = '../GHC/middle_contour.shp'
+    contour_filename = 'GHC/middle_contour.shp'
     contours = ad.import_contours(contour_filename, 'ContourEle', chatty=True)
     crs = ad.get_crs(contour_filename)
     print 'Contours imported. Drawing'
-    if True:
+    if not True:
         for contour in contours:
             contour.plot(color='grey')
     print 'Done drawing contours'
