@@ -9,6 +9,25 @@ class ShapefileError (Exception):
     pass
 
 
+# Old style contours 2.18 GB, 1.36/segment
+class Contours(object):
+    """
+    Holds multiple Contour objects in a dictionary by elevation. Will also contain code to create LineStrings of
+    contours on the fly when that is implemented
+    """
+    def __init__(self):
+        self.contours = {}
+
+    def get(self, elevation):
+        return self.contours[elevation]
+
+    def add(self, contour):
+        self.contours.update({contour.elevation: contour})
+
+    def length(self):
+        return len(self.contours)
+
+
 class Contour(object):
     def __init__(self, line_list, elevation):
         """
@@ -326,7 +345,7 @@ class Delineate(object):
         if self.contour_file is None:
             raise ValueError('self.contour_file must be set to name of shapefile')
 
-        contours = []
+        contours = Contours()
         with fiona.collection(self.contour_file, 'r') as input_file:
             for feature in input_file:
                 elev = feature['properties'][self.contour_elev_field]
@@ -349,10 +368,10 @@ class Delineate(object):
 
                 #Make a contour
                 temp_contour = Contour(lines, elev)
-                contours.append(temp_contour)
+                contours.add(temp_contour)
                 if chatty:
-                    if len(contours) % 25 == 0:
-                        print len(contours), 'contours imported...'
+                    if contours.length() % 25 == 0:
+                        print contours.length(), 'contours imported...'
         return contours
 
     def _merge_bfe_and_xs(self, bfes, cross_sections):

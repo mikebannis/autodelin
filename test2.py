@@ -15,12 +15,12 @@ def main():
 
     crs = d.get_crs(d.contour_file)
 
-    now = dt.now()
     combo_list, contours = d.import_all()
     combo_list = d.trim_bfe_xs(combo_list, start=5140, end=5100)
-    print 'Drew', len(combo_list), 'segements in ', (dt.now() - now)/len(combo_list), ' per segemnt'
 
+    now = dt.now()
     l, r = logic.delineate(combo_list, contours)
+    print 'Drew', len(combo_list), 'segements in ', (dt.now() - now)/len(combo_list), ' per segemnt'
     #d.plot_boundary(l, r)
 
     boundary = l + r

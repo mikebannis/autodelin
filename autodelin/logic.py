@@ -48,7 +48,7 @@ def delineate(bfe_cross_sections, contours):
     """
     Creates floodplain boundaries based on bfes and cross sections along contours
     :param bfe_cross_sections: list of BFE and Cross section objects, sorted downstream to upstream
-    :param contours: list of Contour objects
+    :param contours: Contours object
     :return: two lists of ADPolyline objects, left boundary and right boundary
     """
     # Check for proper order
@@ -83,8 +83,8 @@ def delineate(bfe_cross_sections, contours):
     for current_bfe_xs in remaining_bfe_xs:
         print '*******Working on last', last_bfe_xs.name, 'to current', current_bfe_xs.name
         try:
-            orig_low_contour = _get_contour(contours, math.floor(last_bfe_xs.elevation))
-            orig_high_contour = _get_contour(contours, math.ceil(current_bfe_xs.elevation))
+            orig_low_contour = contours.get(math.floor(last_bfe_xs.elevation))
+            orig_high_contour = contours.get(math.ceil(current_bfe_xs.elevation))
             # Calculate current high and low points for clipping contours
             if type(current_bfe_xs) is BFE:
                 current_position = 1
@@ -174,8 +174,8 @@ def delineate(bfe_cross_sections, contours):
     for current_bfe_xs in remaining_bfe_xs:
         print '*******Working on last', last_bfe_xs.name, 'to current', current_bfe_xs.name
         try:
-            orig_low_contour = _get_contour(contours, math.floor(last_bfe_xs.elevation))
-            orig_high_contour = _get_contour(contours, math.ceil(current_bfe_xs.elevation))
+            orig_low_contour = contours.get(math.floor(last_bfe_xs.elevation))
+            orig_high_contour = contours.get(math.ceil(current_bfe_xs.elevation))
             if type(current_bfe_xs) is BFE:
                 current_position = 1
                 current_high_pt = current_bfe_xs.last_point
@@ -236,19 +236,6 @@ def delineate(bfe_cross_sections, contours):
         else:
             last_position = current_position
     return left_boundary, right_boundary
-
-
-def _get_contour(contours, elevation):
-    """
-    returns the contour with elevation 'elevation'
-    :param contours: list of Contour class objects
-    :param elevation: elevation of desired contour
-    :return: multi line string
-    """
-    for contour in contours:
-        if contour.elevation == elevation:
-            return contour
-    raise ContourNotFound(elevation)
 
 
 def _clip_to_bfe(contour, point1, point2):
@@ -329,9 +316,9 @@ def _calc_extent_position(xs, extent, contours):
     if type(xs) is BFE:
         print 'BFE passed to _calc_extent_position(). Aborting'
         raise
-    high_contour = _get_contour(contours, math.ceil(xs.elevation))
+    high_contour = contours.get(math.ceil(xs.elevation))
     high_contour = _closest_contour_segment(high_contour, extent)
-    low_contour = _get_contour(contours, math.floor(xs.elevation))
+    low_contour = contours.get(math.floor(xs.elevation))
     low_contour = _closest_contour_segment(low_contour, extent)
     # Cross section contour intersections
     high_point = simplify(high_contour.intersection(xs.geo))
