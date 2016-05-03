@@ -4,6 +4,7 @@ from datetime import datetime as dt
 
 
 def main():
+    first_now = dt.now()
     d = ad.Delineate()
     d.bfe_file = 'GHC/carp_bfe.shp'
     d.contour_file = 'GHC/middle_contour.shp'
@@ -22,9 +23,11 @@ def main():
     l, r = logic.delineate(combo_list, contours)
     print 'Drew', len(combo_list), 'segements in ', (dt.now() - now)/len(combo_list), ' per segemnt'
     #d.plot_boundary(l, r)
+    print 'Imports and delineation in ', (dt.now() - first_now)
 
     boundary = l + r
     d.export_boundary(boundary, 'out.shp', crs)
+
 
 
 if __name__ == '__main__':

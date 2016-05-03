@@ -10,19 +10,51 @@ class ShapefileError (Exception):
 
 
 # Old style contours 2.18 GB, 1.36/segment
+# New: 500MB, 6.3 sec/segment, 5:48 total
+# Newer 900MB 1.5/seg, 1:24 total
 class Contours(object):
     """
-    Holds multiple Contour objects in a dictionary by elevation. Will also contain code to create LineStrings of
-    contours on the fly when that is implemented
+    Holds a dictionary of fiona features (contours) by elevaiton. get() converts feature to Contour. Doing this on-
+    the-fly is less memory intensive and faster to load, but slower to delineate.
     """
     def __init__(self):
         self.contours = {}
 
     def get(self, elevation):
-        return self.contours[elevation]
+        """
+        returns Contour object with elevation.
+        :param elevation: int
+        :return: Contour object
+        """
+        temp_geo = self.contours[elevation]
 
-    def add(self, contour):
-        self.contours.update({contour.elevation: contour})
+        # Check if cached
+        if type(temp_geo) is Contour:
+            return temp_geo
+
+        # Force to list
+        temp_geo = shape(temp_geo)
+        if type(temp_geo) is MultiLineString:
+            geos = list(temp_geo)
+        elif type(temp_geo) is LineString:
+            geos = list(MultiLineString([temp_geo]))
+        else:
+            raise ShapefileError('Contour file does not appear to contain lines.')
+
+        # Convert to ADPolylines
+        lines = []
+        for geo in geos:
+            temp_poly = gt.ADPolyline(shapely_geo=geo)
+            lines.append(temp_poly)
+
+        # Make a contour
+        temp_contour = Contour(lines, elevation)
+        # Cache it
+        self.contours[elevation] = temp_contour
+        return temp_contour
+
+    def add(self, geo, elev):
+        self.contours.update({elev: geo})
 
     def length(self):
         return len(self.contours)
@@ -338,6 +370,27 @@ class Delineate(object):
         return cross_sections
 
     def _import_contours(self, chatty=False):
+        """
+        Imports contours from contour file, stores as list of Contour objects
+        :return: list of Contour objects
+        """
+        if self.contour_file is None:
+            raise ValueError('self.contour_file must be set to name of shapefile')
+
+        contours = Contours()
+        with fiona.collection(self.contour_file, 'r') as input_file:
+            for feature in input_file:
+                elev = feature['properties'][self.contour_elev_field]
+                temp_geo = feature['geometry']
+
+                # Make a contour
+                contours.add(temp_geo, elev)
+                if chatty:
+                    if contours.length() % 25 == 0:
+                        print contours.length(), 'contours imported...'
+        return contours
+
+    def _import_contours_OLD(self, chatty=False):
         """
         Imports contours from contour file, stores as list of Contour objects
         :return: list of Contour objects
