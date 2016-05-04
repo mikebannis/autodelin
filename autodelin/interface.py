@@ -3,7 +3,14 @@ import geo_tools as gt
 import fiona
 from shapely.geometry import shape, MultiLineString, LineString, MultiPoint, Point, mapping
 from matplotlib import pyplot
+from collections import namedtuple
 
+
+# CacheTracker = namedtuple('CachedTracker', 'geo age')
+class CacheTracker(object):
+    def __init__(self, age=None, geo=None):
+        self.age = age
+        self.geo = geo
 
 class ShapefileError (Exception):
     pass
@@ -11,14 +18,20 @@ class ShapefileError (Exception):
 
 # Old style contours 2.18 GB, 1.36/segment
 # New: 500MB, 6.3 sec/segment, 5:48 total
-# Newer 900MB 1.5/seg, 1:24 total
+# Cache as needed 900MB 1.5/seg, 1:24 total
+# Cache as needed, remove from cache with age 530MB 1.8sec/seg, 1:39 total
+
 class Contours(object):
     """
     Holds a dictionary of fiona features (contours) by elevaiton. get() converts feature to Contour. Doing this on-
     the-fly is less memory intensive and faster to load, but slower to delineate.
     """
-    def __init__(self):
+    def __init__(self, cache_age=4):
+        # dictionary of either Contour or fiona feature objects keyed by elevation
         self.contours = {}
+        # dictionary of CacheTrackers keyed by elevation
+        self.tracker = {}
+        self.cache_age = cache_age
 
     def get(self, elevation):
         """
@@ -31,6 +44,11 @@ class Contours(object):
         # Check if cached
         if type(temp_geo) is Contour:
             return temp_geo
+
+        # Age cache and create tracker
+        self._age_cache()
+        tracker = CacheTracker(age=self.cache_age, geo=temp_geo)
+        self.tracker.update({elevation: tracker})
 
         # Force to list
         temp_geo = shape(temp_geo)
@@ -49,6 +67,7 @@ class Contours(object):
 
         # Make a contour
         temp_contour = Contour(lines, elevation)
+
         # Cache it
         self.contours[elevation] = temp_contour
         return temp_contour
@@ -58,6 +77,14 @@ class Contours(object):
 
     def length(self):
         return len(self.contours)
+
+    def _age_cache(self):
+        for elev, contour in self.tracker.items():
+            if contour.age == 0:
+                # Remove from cache, reset fiona geo in contours
+                self.contours[elev] = contour.geo
+                self.tracker.pop(elev)
+            contour.age -= 1
 
 
 class Contour(object):
