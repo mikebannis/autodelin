@@ -6,15 +6,14 @@ from matplotlib import pyplot
 from collections import namedtuple
 
 
-
 class ShapefileError (Exception):
     pass
-
 
 # Old style contours 2.18 GB, 1.36/segment
 # New: 500MB, 6.3 sec/segment, 5:48 total
 # Cache as needed 900MB 1.5/seg, 1:24 total
 # Cache as needed, remove from cache with age 530MB 1.8sec/seg, 1:39 total
+
 
 class Contours(object):
     """
@@ -143,7 +142,50 @@ class CrossSection(object):
         self.geo.plot(*args, **kwargs)
 
 
+class River(object):
+    """
+    Holds river geometry and name of HEC-RAS river and reach for a single reach.
+    """
+    def __init__(self, geo, river, reach):
+        """
+        :param geo: ADPolyline - river geometry
+        :param river: string - RAS river name
+        :param reach: string - RAS reach name
+        """
+        self.geo = geo
+        self.river = river
+        self.reach = reach
+
+    def matches(self, river, reach):
+        if self.river == river and self.reach == reach:
+            return True
+        else:
+            return False
+
+
+class Rivers(object):
+    def __init__(self):
+        self.rivers = []
+
+    def get_reach(self, river, reach):
+        """
+        Returns reach from self.rivers that matches river/reach
+        :param river: string - name of RAS river
+        :param reach: string - name of RAS reach
+        :return: River object if success, else None
+        """
+        for test_river in self.rivers:
+            if test_river.matches(river, reach):
+                return test_river
+                
+
 class Manager(object):
+    """
+    Imports shapfiles, processes XS and BFEs. Runs the delineation code.
+
+    INSERT EXAMPLE CODE HERE - ME!!!!!
+
+    """
     def __init__(self):
         # Extent position indicators for shapefile
         self.left = 'left'
@@ -172,7 +214,7 @@ class Manager(object):
                 # Import geometry, check for multipart features
                 geo = shape(feature['geometry'])
                 if type(geo) is MultiLineString:
-                    raise ShapefileError('bfe' + str(elev) + 'appears to be a multipart feature.')
+                    raise ShapefileError('bfe ' + str(elev) + ' appears to be a multipart feature.')
                 temp_poly = gt.ADPolyline(shapely_geo=geo)
                 temp_bfe = logic.BFE(temp_poly, elev)
                 self.bfes.append(temp_bfe)

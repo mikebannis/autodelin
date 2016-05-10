@@ -9,11 +9,11 @@ def main():
     mgr = ad.Manager()
 
     # Import all values
-    mgr.import_bfes('GHC/carp_bfe.shp')
-    mgr.import_xs('GHC/carp_XS.shp')
+    mgr.import_bfes('GHC/GHC_bfe.shp')
+    mgr.import_xs('GHC/GHC_XS.shp')
     mgr.import_contours('GHC/GHC_full_contours.shp', 'ContourEle')
     mgr.import_extents('GHC/all_extents.shp', '100-yr')
-    mgr.import_single_river('GHC/ghc_mainstem.shp')
+    mgr.import_single_river('GHC/GHC_all_rivers.shp')
     mgr.calc_bfe_stations()
     mgr.calc_xs_stations()
     mgr.merge_bfe_and_xs()
