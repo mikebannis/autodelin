@@ -143,53 +143,196 @@ class CrossSection(object):
         self.geo.plot(*args, **kwargs)
 
 
-class Delineate(object):
+class Manager(object):
     def __init__(self):
-        self.river_file = None
-
-        self.xs_file = None
-        self.xs_id_field = 'ProfileM'
-
-        self.bfe_file = None
-        self.bfe_elev_field = 'Elevation'
-
-        self.ext_file = None
-        self.ext_id_field = 'XS_ID'
-        self.ext_pos_field = 'Position'
-        self.ext_profile_field = 'Profile'
-        self.ext_profile = None
-        self.ext_elev_field = 'Elevation'
+        # Extent position indicators for shapefile
         self.left = 'left'
         self.right = 'right'
 
-        self.contour_file = None
-        self.contour_elev_field = 'Elevation'
+        # self.outfile = None
 
-        self.outfile = None
+        # Initialized in methods
+        self.river = None           # ADPolyline
+        self.cross_sections = None  # list of CrossSection objects
+        self.bfes = None            # list of logic.BFE objects
+        self.contours = None        # Contours object
+        self.crs = None             # crs object, from contours
+        self.combo_list = None      # list of CrossSection and logic.BFE objects
 
-    def import_all(self):
-        river = self.single_river_import()
-        cross_sections = self._ez_xs_import()
-        self._ez_extents_import(cross_sections)
+    def import_bfes(self, bfe_file, elev_field='Elevation'):
+        """
+        Imports bfes from shapefile,
+        :param bfe_file: string - name of bfe shapefile
+        :param elev_field: string - attribute field with bfe elevations
+        """
+        self.bfes = []
+        with fiona.collection(bfe_file, 'r') as input_file:
+            for feature in input_file:
+                elev = feature['properties'][elev_field]
+                # Import geometry, check for multipart features
+                geo = shape(feature['geometry'])
+                if type(geo) is MultiLineString:
+                    raise ShapefileError('bfe' + str(elev) + 'appears to be a multipart feature.')
+                temp_poly = gt.ADPolyline(shapely_geo=geo)
+                temp_bfe = logic.BFE(temp_poly, elev)
+                self.bfes.append(temp_bfe)
+        self.bfes.sort(key=lambda x: x.elevation, reverse=True)
 
-        bfes = self._ez_bfe_import()
+    def import_contours(self, contour_file, elev_field, chatty=False):
+        """
+        Imports contours from contour file. Contours are assumed to be dissolved by elevation
+        :param contour_file: string - name of contour shapefile
+        :param elev_field: string - attribute field with contour elevations
+        :param chatty: boolean - True prints import updates to stdout
+        :return: list of Contour objects
+        """
+        self.contours = Contours()
+        with fiona.collection(contour_file, 'r') as input_file:
+            # Grab coordinate reference system
+            self.crs = input_file.crs
+            for feature in input_file:
+                elev = feature['properties'][elev_field]
+                temp_geo = feature['geometry']
 
-        contours = self._import_contours(chatty=True)
+                # Make a contour
+                self.contours.add(temp_geo, elev)
+                if chatty:
+                    if self.contours.length() % 25 == 0:
+                        print self.contours.length(), 'contours imported...'
 
-        self._calc_bfe_stations(bfes, river)
-        self._calc_xs_stations(cross_sections, river)
-        combo_list = self._merge_bfe_and_xs(bfes, cross_sections)
+    def import_extents(self, ext_file, profile, id_field='XS_ID', profile_field='Profile', elev_field='Elevation',
+                       pos_field='Position'):
+        """
+        Imports extents with 'profile' and appends them to appropriate cross_sections
+        :param ext_file: string - extents shapefile name
+        :param profile: string - name of profile to import
+        :param id_field: string - attribute field with XS id
+        :param profile_field: string - attrivute field with profile
+        :param elev_field: string - attribute field with XS elevation
+        :param pos_field: string - attribute field with extent position
+        """
+        def get_xs(temp_id):
+            for temp_xs in self.cross_sections:
+                if temp_xs.id == temp_id:
+                    return temp_xs
 
-        return combo_list, contours
+        with fiona.collection(ext_file, 'r') as input_file:
+            for feature in input_file:
+                # Verify proper profile
+                if feature['properties'][profile_field] != profile:
+                    continue
+
+                xs_id = feature['properties'][id_field]
+                position = feature['properties'][pos_field]
+                elevation = feature['properties'][elev_field]
+                temp_geo = shape(feature['geometry'])
+
+                if type(temp_geo) is not Point:
+                    print 'Extent for cross section', xs_id, 'is type', type(temp_geo), ', should be Point. Ignoring.'
+                    continue
+
+                geo = gt.ADPoint(shapely_geo=temp_geo)
+                xs = get_xs(xs_id)
+                # If the cross section doesn't exist, ignore the extent
+                if xs is None:
+                    continue
+                xs.elevation = elevation
+                if position == self.left:
+                    xs.left_extent = geo
+                elif position == self.right:
+                    xs.right_extent = geo
+                else:
+                    print 'Extent for cross section', xs_id, 'has position', position, 'which is neither', self.left, \
+                        'nor', self.right, 'Ignoring.'
+
+    def import_single_river(self, river_file):
+        """
+        imports river from river_file shapefile and returns ADPolyline
+        raises exception if file has more than one feature or is not Linestring
+        :param river_file: string - name of river shapefile
+        """
+        if river_file is None:
+            raise ValueError('self.river_file must be set to name of shapefile')
+
+        with fiona.collection(river_file, 'r') as input_file:
+            feature = list(input_file)
+
+            if len(feature) > 1:
+                raise ShapefileError('More than one feature in river shapefile' + river_file)
+
+            # Fiona might give a Linestring or a MultiLineString, handle both cases
+            temp_geo = shape(feature[0]['geometry'])
+            if type(temp_geo) is MultiLineString:
+                raise ShapefileError('Feature in ' + str(river_file) + ' is MultiLineString.' +
+                                     ' This is likely an error.')
+            elif type(temp_geo) is LineString:
+                self.river = gt.ADPolyline(shapely_geo=temp_geo)
+            else:
+                raise ShapefileError('Feature in ' + river_file + ' is not a Linestring.')
+
+    def import_xs(self, xs_file, xs_id_field='ProfileM'):
+        """
+        Imports hec-ras cross section cut lines from self.xs_file.
+        :param xs_id_field: string - attribute field with XS names
+        :param xs_file: string - name of cross section shapefile
+        """
+        if xs_file is None:
+            raise ValueError('xs_file must be set to name of shapefile')
+
+        self.cross_sections = []
+        with fiona.collection(xs_file, 'r') as input_file:
+            for feature in input_file:
+                xs_id = feature['properties'][xs_id_field]
+
+                # Fiona might give a Linestring or a MultiLineString, handle both cases
+                temp_geo = shape(feature['geometry'])
+                if type(temp_geo) is not LineString:
+                    raise ShapefileError('Cross section' + str(xs_id) + 'is type' + str(type(temp_geo)) +
+                                         ', should be LineString.')
+                geo = gt.ADPolyline(shapely_geo=temp_geo)
+                self.cross_sections.append(CrossSection(geo, xs_id))
+
+    def calc_bfe_stations(self):
+        """
+        Calculates BFE.stations for bfe's along river
+        """
+        for bfe in self.bfes:
+            temp_point = self.river.intersection(bfe.geo)
+            if type(temp_point) is MultiPoint:
+                print 'BFE', bfe.elevation, 'crosses channel alignment multiple times. Aborting'
+                raise
+            elif temp_point is None:
+                print 'BFE', bfe.elevation, 'does not cross channel alignment. Aborting.'
+                raise
+            bfe.river_intersect = temp_point
+            bfe.station = self.river.project(bfe.river_intersect)
+
+    def calc_xs_stations(self):
+        """
+        Calculates CrossSection.stations for cross section along river
+        """
+        for xs in self.cross_sections:
+            temp_point = self.river.intersection(xs.geo)
+            if type(temp_point) is MultiPoint:
+                raise ShapefileError('Cross section'+str(xs.id)+'crosses channel alignment multiple times.')
+            elif temp_point is None:
+                raise ShapefileError('Cross section '+str(xs.id)+' does not cross channel alignment.')
+            xs.river_intersect = temp_point
+            xs.station = self.river.project(xs.river_intersect)
+
+    def merge_bfe_and_xs(self):
+        """
+        Combines list of bfes and cross sections into one list sorted by station
+        """
+        self.combo_list = self.bfes + self.cross_sections
+        self.combo_list.sort(key=lambda x: x.station)
 
     def run_single_reach(self):
         """
         Delinate single reach. Assumed all features in shapefiles belong to the same reach
         :return: left list of ADpolyline boundaries, right list of Adpolyine boundaries
         """
-        combo_list, contours = self.import_all()
-
-        left_bound, right_bound = logic.delineate(combo_list, contours)
+        left_bound, right_bound = logic.delineate(self.combo_list, self.contours)
         return left_bound, right_bound
 
     def get_crs(self, filename):
@@ -203,297 +346,6 @@ class Delineate(object):
             line.plot(color=color)
         pyplot.axes().set_aspect('equal', 'datalim')
         pyplot.show()
-
-    def trim_bfe_xs(self, bfe_xs_list, start=None, end=None):
-        """
-        Removes BFE/cross sections that are not in between start and end
-        :param bfe_xs_list:
-        :param start: highest elevation bfe/cross section to use
-        :param end: lowest elevation bfe to use
-        :return: lists of left and right boundary
-        """
-        # Check for proper order
-        if bfe_xs_list[0].elevation > bfe_xs_list[-1].elevation:
-            # print 'BFE/cross section list appears to be in reverse order. Reversing.'
-            bfe_xs_list = bfe_xs_list[::-1]
-
-        new_bfe_xs_list = []
-        flag = 'out'
-        for bfe_xs in bfe_xs_list:
-            if bfe_xs.name == start:
-                flag = 'in'
-                new_bfe_xs_list.append(bfe_xs)
-            elif flag == 'in' and bfe_xs.name != end:
-                new_bfe_xs_list.append(bfe_xs)
-            elif bfe_xs.name == end:
-                new_bfe_xs_list.append(bfe_xs)
-                break
-                # print 'bfe_xs.name=', bfe_xs.name,'start=', start,'end=', end
-        return new_bfe_xs_list
-
-    @staticmethod
-    def export_boundary(boundary, out_file, crs):
-        """
-        Export lines in boundary to out_file
-        :param boundary: list of ADPolylines
-        :param out_file: name of shapefile to write
-        :param crs: fiona coordinate reference system
-        """
-        # Check for extension
-        if out_file[-4:] != '.shp':
-            out_file += '.shp'
-
-        # Export to shapefile
-        schema = {'geometry': 'LineString', 'properties': {'status': 'str:25'}}
-        with fiona.open(out_file, 'w', driver='ESRI Shapefile', crs=crs, schema=schema) as out:
-            for line in boundary:
-                out.write({'geometry': mapping(line.shapely_geo), 'properties': {'status': line.status}})
-
-    def _calc_bfe_stations(self, bfes, river):
-        """
-        Calculates BFE.stations for bfe's along river
-        :param bfes: list of BFE objects
-        :param river: ADPolyline object
-        :return: None
-        """
-        for bfe in bfes:
-            temp_point = river.intersection(bfe.geo)
-            if type(temp_point) is MultiPoint:
-                print 'BFE', bfe.elevation, 'crosses channel alignment multiple times. Aborting'
-                raise
-            elif temp_point is None:
-                print 'BFE', bfe.elevation, 'does not cross channel alignment. Aborting.'
-                raise
-            bfe.river_intersect = temp_point
-            bfe.station = river.project(bfe.river_intersect)
-
-    def _calc_xs_stations(self, cross_sections, river):
-        """
-        Calculates CrossSection.stations for cross section along river
-        :param cross_sections: list of CrossSection objects
-        :param river: ADPolyline object
-        :return: None
-        """
-        for xs in cross_sections:
-            temp_point = river.intersection(xs.geo)
-            if type(temp_point) is MultiPoint:
-                raise ShapefileError('Cross section'+str(xs.id)+'crosses channel alignment multiple times.')
-            elif temp_point is None:
-                raise ShapefileError('Cross section '+str(xs.id)+' does not cross channel alignment.')
-            xs.river_intersect = temp_point
-            xs.station = river.project(xs.river_intersect)
-
-    # This is hypothetical
-    def _calc_xs_stations_NEW(self, cross_sections, river):
-        """
-        Calculates CrossSection.stations for cross section along river
-        :param cross_sections: list of CrossSection objects
-        :param river: ADPolyline object
-        :return: None
-        """
-        valid_xs = []
-        for xs in cross_sections:
-            temp_point = river.intersection(xs.geo)
-            if type(temp_point) is MultiPoint:
-                raise ChannelCrossingError('Cross section'+str(xs.id)+'crosses channel alignment multiple times. Aborting')
-            elif temp_point is None:
-                print 'Cross section '+str(xs.id)+' does not cross channel alignment. Aborting'
-                continue
-            xs.river_intersect = temp_point
-            xs.station = river.project(xs.river_intersect)
-            valid_xs.append(xs)
-        return
-
-    def _ez_bfe_import(self):
-        """
-        Imports bfes from shapefile, assumes all bfes are on the same river/reach
-        :return: list of BFE objects
-        """
-        if self.bfe_file is None:
-            raise ValueError('self.river_file must be set to name of shapefile')
-
-        bfes = []
-        with fiona.collection(self.bfe_file, 'r') as input_file:
-            for feature in input_file:
-                elev = feature['properties'][self.bfe_elev_field]
-
-                # Look out for duplicate BFE's
-                ### REMOVE WHEN CODE IS UPDATED TO HANDLE MORE XS'S THAN NEEDED
-                if any(bfe.elevation == elev for bfe in bfes):
-                    continue
-
-                # Import geometry, check for multipart features
-                geo = shape(feature['geometry'])
-                if type(geo) is MultiLineString:
-                    raise ShapefileError( 'bfe' + str(elev) + 'appears to be a multipart feature.')
-                temp_poly = gt.ADPolyline(shapely_geo=geo)
-                temp_bfe = logic.BFE(temp_poly, elev)
-                bfes.append(temp_bfe)
-        bfes.sort(key=lambda x: x.elevation, reverse=True)
-        return bfes
-
-    def _ez_extents_import(self, cross_sections):
-        """
-        Imports extents with 'profile' and appends them to appropriate cross_sections
-        """
-        def get_xs(temp_id):
-            for temp_xs in cross_sections:
-                if temp_xs.id == temp_id:
-                    return temp_xs
-
-        if self.ext_file is None:
-            raise ValueError('self.ext_file must be set to name of shapefile')
-        if self.ext_profile is None:
-            raise ValueError('self.ext_profile must be set to a RAS profile name')
-
-        with fiona.collection(self.ext_file, 'r') as input_file:
-            for feature in input_file:
-                # Verify proper profile
-                if feature['properties'][self.ext_profile_field] != self.ext_profile:
-                    continue
-
-                xs_id = feature['properties'][self.ext_id_field]
-                position = feature['properties'][self.ext_pos_field]
-                elevation = feature['properties'][self.ext_elev_field]
-                temp_geo = shape(feature['geometry'])
-
-                if type(temp_geo) is not Point:
-                    print 'Extent for cross section', xs_id, 'is type', type(temp_geo), ', should be Point. Ignoring.'
-                    continue
-
-                geo = gt.ADPoint(shapely_geo=temp_geo)
-                xs = get_xs(xs_id)
-                if xs is None:
-                    continue
-                xs.elevation = elevation
-                if position == self.left:
-                    xs.left_extent = geo
-                elif position == self.right:
-                    xs.right_extent = geo
-                else:
-                    print 'Extent for cross section', xs_id, 'has position', position, 'which is neither', self.left, \
-                        'nor', self.right, 'Ignoring.'
-
-    def _ez_xs_import(self):
-        """
-        Imports hec-ras cross section cut lines from self.xs_file.
-        :return: list of CrossSection objects
-        """
-        if self.xs_file is None:
-            raise ValueError('self.river_file must be set to name of shapefile')
-
-        cross_sections = []
-        with fiona.collection(self.xs_file, 'r') as input_file:
-            for feature in input_file:
-                xs_id = feature['properties'][self.xs_id_field]
-
-                # Look out and ignore duplicate XS's
-                if any(xs.id == xs_id for xs in cross_sections):
-                    continue
-
-                # Fiona might give a Linestring or a MultiLineString, handle both cases
-                temp_geo = shape(feature['geometry'])
-                if type(temp_geo) is not LineString:
-                    raise ShapefileError('Cross section' + str(xs_id) + 'is type' + str(type(temp_geo)) +
-                                         ', should be LineString.')
-
-                geo = gt.ADPolyline(shapely_geo=temp_geo)
-                cross_sections.append(CrossSection(geo, xs_id))
-        return cross_sections
-
-    def _import_contours(self, chatty=False):
-        """
-        Imports contours from contour file, stores as list of Contour objects
-        :return: list of Contour objects
-        """
-        if self.contour_file is None:
-            raise ValueError('self.contour_file must be set to name of shapefile')
-
-        contours = Contours()
-        with fiona.collection(self.contour_file, 'r') as input_file:
-            for feature in input_file:
-                elev = feature['properties'][self.contour_elev_field]
-                temp_geo = feature['geometry']
-
-                # Make a contour
-                contours.add(temp_geo, elev)
-                if chatty:
-                    if contours.length() % 25 == 0:
-                        print contours.length(), 'contours imported...'
-        return contours
-
-    def _import_contours_OLD(self, chatty=False):
-        """
-        Imports contours from contour file, stores as list of Contour objects
-        :return: list of Contour objects
-        """
-        if self.contour_file is None:
-            raise ValueError('self.contour_file must be set to name of shapefile')
-
-        contours = Contours()
-        with fiona.collection(self.contour_file, 'r') as input_file:
-            for feature in input_file:
-                elev = feature['properties'][self.contour_elev_field]
-                # print elev
-
-                # Fiona might give a Linestring or a MultiLineString, handle both cases
-                temp_geo = shape(feature['geometry'])
-                if type(temp_geo) is MultiLineString:
-                    geos = list(temp_geo)
-                elif type(temp_geo) is LineString:
-                    geos = list(MultiLineString([temp_geo]))
-                else:
-                    raise ShapefileError('Contour file does not appear to contain lines.')
-
-                # Convert to ADPolylines
-                lines = []
-                for geo in geos:
-                    temp_poly = gt.ADPolyline(shapely_geo=geo)
-                    lines.append(temp_poly)
-
-                #Make a contour
-                temp_contour = Contour(lines, elev)
-                contours.add(temp_contour)
-                if chatty:
-                    if contours.length() % 25 == 0:
-                        print contours.length(), 'contours imported...'
-        return contours
-
-    def _merge_bfe_and_xs(self, bfes, cross_sections):
-        """
-        Combines list of bfes and cross sections into one list sorted by station
-        :param bfes: list of BFE objects
-        :param cross_sections: list of CrossSection objects
-        :return: combined, sorted list of bfes and cross sections
-        """
-        combo_list = bfes + cross_sections
-        combo_list.sort(key=lambda x: x.station)
-        return combo_list
-
-    def single_river_import(self):
-        """
-        imports river from river_file shapefile and returns ADPolyline
-        raises exception if file has more than one feature or is not Linestring
-        :return: ADPolyline
-        """
-        if self.river_file is None:
-            raise ValueError('self.river_file must be set to name of shapefile')
-
-        with fiona.collection(self.river_file, 'r') as input_file:
-            feature = list(input_file)
-
-            if len(feature) > 1:
-                raise ShapefileError('More than one feature in river shapefile' + self.river_file)
-
-            # Fiona might give a Linestring or a MultiLineString, handle both cases
-            temp_geo = shape(feature[0]['geometry'])
-            if type(temp_geo) is MultiLineString:
-                raise ShapefileError('Feature in ' + str(self.river_file) + ' is MultiLineString.' +
-                                     ' This is likely an error.')
-            elif type(temp_geo) is LineString:
-                return gt.ADPolyline(shapely_geo=temp_geo)
-            else:
-                raise ShapefileError('Feature in ' + self.river_file + ' is not a Linestring.')
 
     def multi_river_import(self, river_field, reach_field):
         """
@@ -551,3 +403,68 @@ class Delineate(object):
             if item.crosses(river):
                 new_list.append(item)
         return new_list
+
+    def trim_bfe_xs(self, start=None, end=None):
+        """
+        Removes BFE/cross sections that are not in between start and end
+        :param bfe_xs_list:
+        :param start: highest elevation bfe/cross section to use
+        :param end: lowest elevation bfe to use
+        :return: lists of left and right boundary
+        """
+        # Check for proper order
+        if self.combo_list[0].elevation > self.combo_list[-1].elevation:
+            # print 'BFE/cross section list appears to be in reverse order. Reversing.'
+            self.combo_list = self.combo_list[::-1]
+
+        new_bfe_xs_list = []
+        flag = 'out'
+        for bfe_xs in self.combo_list:
+            if bfe_xs.name == start:
+                flag = 'in'
+                new_bfe_xs_list.append(bfe_xs)
+            elif flag == 'in' and bfe_xs.name != end:
+                new_bfe_xs_list.append(bfe_xs)
+            elif bfe_xs.name == end:
+                new_bfe_xs_list.append(bfe_xs)
+                break
+                # print 'bfe_xs.name=', bfe_xs.name,'start=', start,'end=', end
+        self.combo_list = new_bfe_xs_list
+
+    def export_boundary(self, boundary, out_file):
+        """
+        Export lines in boundary to out_file
+        :param boundary: list of ADPolylines
+        :param out_file: name of shapefile to write
+        :param crs: fiona coordinate reference system
+        """
+        # Check for extension
+        if out_file[-4:] != '.shp':
+            out_file += '.shp'
+
+        # Export to shapefile
+        schema = {'geometry': 'LineString', 'properties': {'status': 'str:25'}}
+        with fiona.open(out_file, 'w', driver='ESRI Shapefile', crs=self.crs, schema=schema) as out:
+            for line in boundary:
+                out.write({'geometry': mapping(line.shapely_geo), 'properties': {'status': line.status}})
+
+    # This is hypothetical
+    def _calc_xs_stations_NEW(self, cross_sections, river):
+        """
+        Calculates CrossSection.stations for cross section along river
+        :param cross_sections: list of CrossSection objects
+        :param river: ADPolyline object
+        :return: None
+        """
+        valid_xs = []
+        for xs in cross_sections:
+            temp_point = river.intersection(xs.geo)
+            if type(temp_point) is MultiPoint:
+                raise ChannelCrossingError('Cross section'+str(xs.id)+'crosses channel alignment multiple times. Aborting')
+            elif temp_point is None:
+                print 'Cross section '+str(xs.id)+' does not cross channel alignment. Aborting'
+                continue
+            xs.river_intersect = temp_point
+            xs.station = river.project(xs.river_intersect)
+            valid_xs.append(xs)
+        return

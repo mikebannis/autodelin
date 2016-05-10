@@ -6,19 +6,19 @@ from matplotlib import pyplot
 
 def main():
     first_now = dt.now()
-    d = ad.Delineate()
-    d.bfe_file = 'GHC/carp_bfe.shp'
-    d.contour_file = 'GHC/middle_contour.shp'
-    d.contour_elev_field = 'ContourEle'
-    d.ext_file = 'GHC/all_extents.shp'
-    d.ext_profile = '100-yr'
-    d.river_file = 'GHC/ghc_mainstem.shp'
-    d.xs_file = 'GHC/carp_XS.shp'
+    mgr = ad.Manager()
 
-    crs = d.get_crs(d.contour_file)
+    # Import all values
+    mgr.import_bfes('GHC/carp_bfe.shp')
+    mgr.import_xs('GHC/carp_XS.shp')
+    mgr.import_contours('GHC/middle_contour.shp', 'ContourEle')
+    mgr.import_extents('GHC/all_extents.shp', '100-yr')
+    mgr.import_single_river('GHC/ghc_mainstem.shp')
+    mgr.calc_bfe_stations()
+    mgr.calc_xs_stations()
+    mgr.merge_bfe_and_xs()
 
-    combo_list, contours = d.import_all()
-    #combo_list = d.trim_bfe_xs(combo_list, start=5140, end=5100)
+    #mgr.trim_bfe_xs(start=5140, end=5100)
     #combo_list = d.trim_bfe_xs(combo_list, start=5128, end=5130)
 
     if False:
@@ -29,14 +29,14 @@ def main():
                 item.river_intersect.label(str(item.elevation))
 
     now = dt.now()
-    l, r = logic.delineate(combo_list, contours)
-    print 'Drew', len(combo_list), 'segements in ', (dt.now() - now)/len(combo_list), ' per segemnt'
+    l, r = mgr.run_single_reach()
+    print 'Drew', len(mgr.combo_list), 'segements in ', (dt.now() - now)/len(mgr.combo_list), ' per segemnt'
     #d.plot_boundary(l, r)
     print 'Imports and delineation in ', (dt.now() - first_now)
 
     boundary = l + r
-    d.export_boundary(boundary, 'out.shp', crs)
-    pyplot.show()
+    mgr.export_boundary(boundary, 'out.shp')
+    #pyplot.show()
 
 
 if __name__ == '__main__':
