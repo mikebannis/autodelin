@@ -6,7 +6,7 @@ from matplotlib import pyplot
 
 DEBUG1 = gt.DEBUG1
 DEBUG2 = gt.DEBUG2
-NEW_DEBUG = True
+NEW_DEBUG = False
 
 
 class ContourNotFound(Exception):
@@ -47,6 +47,14 @@ class BFE(object):
 def delineate(bfe_cross_sections, contours):
     """
     Creates floodplain boundaries based on bfes and cross sections along contours
+
+    This works with pairs of BFEs/cross sections. For a given pair, each BFE/XS is intersected with the contours to
+    create clipping points (current_high_pt, current_low_pt, last_high_pt, last_low_pt). Two position float variables
+    are also created indicated the location at which the boundary should cross the BFE/XS. For BFE's the position will
+    be 0 for the downstream BFE and 1.0 for the upstream BFE. For cross sections the position will be a variable
+    between 1.0 and 0.0. Cross section extents that are horizontally outside the two appropriate contours are
+    ignored.
+
     :param bfe_cross_sections: list of BFE and Cross section objects, sorted downstream to upstream
     :param contours: Contours object
     :return: two lists of ADPolyline objects, left boundary and right boundary
@@ -87,10 +95,10 @@ def delineate(bfe_cross_sections, contours):
             orig_high_contour = contours.get(math.ceil(current_bfe_xs.elevation))
             # Calculate current high and low points for clipping contours
             if type(current_bfe_xs) is BFE:
+                # current_high_pt is last vertex on BFE
                 current_position = 1
                 current_high_pt = current_bfe_xs.first_point
-                # Hack, should run an intersect
-                #current_low_pt = current_bfe_xs.first_point
+                # current_low_pt is found by intersecting current BFE w/ low contour
                 temp_low_contour = _closest_contour_segment(orig_low_contour, current_bfe_xs.first_point)
                 current_low_pt = current_bfe_xs.geo.nearest_intersection(temp_low_contour, current_bfe_xs.first_point)
             else:  # CrossSection
@@ -102,9 +110,11 @@ def delineate(bfe_cross_sections, contours):
                     continue
 
             print 'last low pt', type(last_low_pt), last_low_pt, 'current_low_pt', type(current_low_pt), current_low_pt
+            # trim contours between current and last BFE/XS
             low_contour = _clip_to_bfe(orig_low_contour, last_low_pt, current_low_pt)
             high_contour = _clip_to_bfe(orig_high_contour, last_high_pt, current_high_pt)
 
+            # force contours to point upstream
             _orient_contours(last_low_pt, low_contour)
             _orient_contours(last_high_pt, high_contour)
 
@@ -119,6 +129,12 @@ def delineate(bfe_cross_sections, contours):
             boundary = gt.draw_line_between_contours(low_contour, high_contour, last_position, current_position)
             if type(boundary) is gt.ADPolyline:
                 print 'Success'
+            if _contour_crosses_boundary(boundary, orig_high_contour, orig_low_contour):
+                status = 'Crosses'
+            else:
+                status = 'OK'
+            boundary.status = status
+
             left_boundary.append(boundary)
 
             if DEBUG1:
@@ -127,6 +143,8 @@ def delineate(bfe_cross_sections, contours):
             print 'Left: Funky contour'
         except ContourNotFound:
             print 'Left: Contour not found'
+        except gt.UnknownIntersection:
+            print 'Left: Contour doesn\'t intersect BFE/cross section'
         except Exception as e:
             print 'Left: unknown exception:', str(e)
             raise
@@ -176,12 +194,15 @@ def delineate(bfe_cross_sections, contours):
         try:
             orig_low_contour = contours.get(math.floor(last_bfe_xs.elevation))
             orig_high_contour = contours.get(math.ceil(current_bfe_xs.elevation))
+            # Determine high and low points at current BFE/XS for clipping contours
             if type(current_bfe_xs) is BFE:
                 current_position = 1
+                # high clip point is end of BFE line
                 current_high_pt = current_bfe_xs.last_point
-                # Hack, should run an intersect
-                # current_low_pt = current_bfe_xs.last_point
                 temp_low_contour = _closest_contour_segment(orig_low_contour, current_bfe_xs.last_point)
+                # temp_low_contour.plot()
+                # current_bfe_xs.geo.plot(color='orange')
+                # print 'orig_low_elevation=', orig_low_contour.elevation
                 current_low_pt = current_bfe_xs.geo.nearest_intersection(temp_low_contour, current_bfe_xs.last_point)
             else:  # CrossSection
                 current_position, current_high_pt, current_low_pt = \
@@ -192,9 +213,11 @@ def delineate(bfe_cross_sections, contours):
                     continue
 
             #print 'last low pt', type(last_low_pt), last_low_pt, 'current_low_pt', type(current_low_pt), current_low_pt
+            # Clip contour based on orig/current high/low points
             low_contour = _clip_to_bfe(orig_low_contour, last_low_pt, current_low_pt)
             high_contour = _clip_to_bfe(orig_high_contour, last_high_pt, current_high_pt)
 
+            # Make contours point up hill
             _orient_contours(last_low_pt, low_contour)
             _orient_contours(last_high_pt, high_contour)
 
@@ -209,6 +232,11 @@ def delineate(bfe_cross_sections, contours):
             boundary = gt.draw_line_between_contours(low_contour, high_contour, last_position, current_position)
             if type(boundary) is gt.ADPolyline:
                 print 'Success'
+            if _contour_crosses_boundary(boundary, orig_high_contour, orig_low_contour):
+                status = 'Crosses'
+            else:
+                status = 'OK'
+            boundary.status = status
             right_boundary.append(boundary)
 
             if DEBUG1:
@@ -217,6 +245,8 @@ def delineate(bfe_cross_sections, contours):
             print 'Right: Funky contour'
         except ContourNotFound:
             print 'Right: Contour not found'
+        except gt.UnknownIntersection:
+            print 'Left: Contour doesn\'t intersect BFE/cross section'
         except Exception as e:
             print 'Right: unknown exception:', str(e)
             raise
@@ -314,8 +344,8 @@ def _calc_extent_position(xs, extent, contours):
             return None
 
     if type(xs) is BFE:
-        print 'BFE passed to _calc_extent_position(). Aborting'
-        raise
+        raise ValueError('BFE passed to _calc_extent_position(). Aborting')
+
     high_contour = contours.get(math.ceil(xs.elevation))
     high_contour = _closest_contour_segment(high_contour, extent)
     low_contour = contours.get(math.floor(xs.elevation))
@@ -347,10 +377,10 @@ def _contour_crosses_boundary(boundary, contour1, contour2):
     :return: boolean
     """
     for contour in contour1.line_list:
-        if contour.crosses(boundary):
+        if contour.num_intersects(boundary) > 1:
             return True
     for contour in contour2.line_list:
-        if contour.crosses(boundary):
+        if contour.num_intersects(boundary) > 1:
             return True
     return False
 
@@ -370,113 +400,3 @@ def _orient_contours(point, contour):
         if DEBUG1:
             print 'flipping contour'
         contour.flip()
-
-#def _calc_bfe_intersects(last_bfe_xs, contours):
-#     """
-#     Returns bfe contour intersection point
-#     :param last_bfe_xs: BFE object
-#     :param contours: list of Contour objects
-#     :return: ADPoint, ADPoint
-#     """
-#     if contour.multipart:
-#         # Find segment nearest to both points
-#         index1 = _closest_segment_by_index(contour.line_list, point1)
-#         index2 = _closest_segment_by_index(contour.line_list, point2)
-#         # If not on same segment raise ComplexContourError
-#         if index1 != index2:
-#             raise ComplexContourError
-#         contour_poly = contour.line_list[index1]
-#     else:
-#         contour_poly = contour[0]
-#
-#     if DEBUG1:
-#         print 'contour in _clip_to_bfe first/last point', contour_poly.first_point, contour_poly.last_point
-#     # Find nearest points to point1 and point2 on contour
-#     point1 = contour_poly.point_at_distance(contour_poly.project(point1))
-#     point2 = contour_poly.point_at_distance(contour_poly.project(point2))
-#     pass
-
-# def delineate_by_bfes(bfes, contours):
-#     """
-#     Creates floodplain boundaries based on bfes along contours
-#     :param bfes: list of BFE objects
-#     :param contours: list of Contour objects
-#     :return: two lists of ADPolyline objects, left boundary and right boundary
-#     """
-#     left_boundary = []
-#     right_boundary = []
-#     # Assumes bfes is in decreasing elevation
-#     last_bfe = bfes.pop(0)
-#     for current_bfe in bfes:
-#         try:
-#             print '*'*30+str(current_bfe.elevation)
-#             # Do left side -----------------------------------------------------------------------------
-#             if DEBUG1:
-#                 print '-'*20+'left side'
-#             orig_contour1 = _get_contour(contours, last_bfe.elevation)
-#             contour1 = _clip_to_bfe(orig_contour1, last_bfe.first_point, current_bfe.first_point)
-#             orig_contour2 = _get_contour(contours, current_bfe.elevation)
-#             contour2 = _clip_to_bfe(orig_contour2, current_bfe.first_point, last_bfe.first_point)
-#
-#             if DEBUG1:
-#                 print 'contour1 first point/last point', str(contour1.first_point), str(contour1.last_point)
-#             _orient_contours(last_bfe.first_point, contour1, contour2)
-#             if DEBUG1:
-#                 print 'contour1 first point/last after orient', str(contour1.first_point), str(contour1.last_point)
-#                 contour1.plot(color='black', linewidth=2)
-#                 contour2.plot(color='red')
-#                 contour1.first_point.plot(marker='*')
-#
-#             boundary = gt.draw_line_between_contours(contour1, contour2)
-#             if _contour_crosses_boundary(boundary, orig_contour1, orig_contour2):
-#                 boundary.status = 'crosses_contour'
-#             else:
-#                 boundary.status = 'ok'
-#             left_boundary.append(boundary)
-#
-#             if DEBUG1:
-#                 boundary.plot(marker='D')
-#         except ComplexContourError:
-#             print 'Left: Funky contour'
-#         except ContourNotFound:
-#             print 'Left: Contour not found'
-#         except Exception as e:
-#             print 'Right: unknown exception:', str(e)
-#
-#         try:
-#             # Do right side --------------------------------------------------------------------------
-#             if DEBUG1:
-#                 print '-'*20+'right side'
-#             orig_contour1 = _get_contour(contours, last_bfe.elevation)
-#             contour1 = _clip_to_bfe(orig_contour1, last_bfe.last_point, current_bfe.last_point)
-#             orig_contour2 = _get_contour(contours, current_bfe.elevation)
-#             contour2 = _clip_to_bfe(orig_contour2, current_bfe.last_point, last_bfe.last_point)
-#             if DEBUG1:
-#                 print 'contour1 first point/last point', str(contour1.first_point), str(contour1.last_point)
-#
-#             _orient_contours(last_bfe.last_point, contour1, contour2)
-#             if DEBUG1:
-#                 print 'contour1 first point/last after orient', str(contour1.first_point), str(contour1.last_point)
-#             if DEBUG1:
-#                 contour1.plot(color='black', linewidth=2)
-#                 contour2.plot(color='red')
-#                 contour1.first_point.plot(marker='*')
-#
-#             boundary = gt.draw_line_between_contours(contour1, contour2)
-#             if _contour_crosses_boundary(boundary, orig_contour1, orig_contour2):
-#                 boundary.status = 'crosses_contour'
-#             else:
-#                 boundary.status = 'ok'
-#             right_boundary.append(boundary)
-#
-#             if DEBUG1:
-#                 boundary.plot(marker='D')
-#         except ComplexContourError:
-#             print 'Right: Funky contour. Not delineating'
-#         except ContourNotFound:
-#             print 'Right: Contour not found. Not delineating'
-#         except Exception as e:
-#             print 'Right: unknown exception:', str(e)
-#
-#         last_bfe = current_bfe
-#     return left_boundary, right_boundary

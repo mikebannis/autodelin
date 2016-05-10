@@ -154,6 +154,23 @@ class ADPolyline(object):
         # Return closest point
         return intersects[0]
 
+    def num_intersects(self, line):
+        """
+        Intersects self with line. returns the number of point intersections
+        :param line: ADPolyline
+        :return: int
+        """
+        intersect = self.intersection(line)
+        if intersect is None:
+            return 0
+        elif type(intersect) is ADPoint:
+            return 1
+        elif type(intersect) is list:
+            return len(intersect)
+        else:
+            # Returned polyline or something weird. Maybe raise an exception here?
+            return 0
+
     def point_at_distance(self, distance, normalize=False):
         new_pt = self.shapely_geo.interpolate(distance, normalized=normalize)
         return ADPoint(shapely_geo=new_pt)

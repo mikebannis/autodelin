@@ -6,11 +6,6 @@ from matplotlib import pyplot
 from collections import namedtuple
 
 
-# CacheTracker = namedtuple('CachedTracker', 'geo age')
-class CacheTracker(object):
-    def __init__(self, age=None, geo=None):
-        self.age = age
-        self.geo = geo
 
 class ShapefileError (Exception):
     pass
@@ -24,13 +19,14 @@ class ShapefileError (Exception):
 class Contours(object):
     """
     Holds a dictionary of fiona features (contours) by elevaiton. get() converts feature to Contour. Doing this on-
-    the-fly is less memory intensive and faster to load, but slower to delineate.
+    the-fly is less memory intensive and faster to load, but slower to delineate. Includes caching with cache aging
     """
     def __init__(self, cache_age=4):
         # dictionary of either Contour or fiona feature objects keyed by elevation
         self.contours = {}
         # dictionary of CacheTrackers keyed by elevation
         self.tracker = {}
+        # Number of self.get()'s that can run w/o accessing the contour before it's kicked from cache
         self.cache_age = cache_age
 
     def get(self, elevation):
@@ -65,26 +61,35 @@ class Contours(object):
             temp_poly = gt.ADPolyline(shapely_geo=geo)
             lines.append(temp_poly)
 
-        # Make a contour
+        # Make a contour and cache it
         temp_contour = Contour(lines, elevation)
-
-        # Cache it
         self.contours[elevation] = temp_contour
+
         return temp_contour
 
     def add(self, geo, elev):
+        """ adds fiona geometry to contour list"""
         self.contours.update({elev: geo})
 
     def length(self):
         return len(self.contours)
 
     def _age_cache(self):
+        """ Ages all cached contours. Kicks old contours out of cache and restores fiona geo to contour list. """
         for elev, contour in self.tracker.items():
             if contour.age == 0:
                 # Remove from cache, reset fiona geo in contours
                 self.contours[elev] = contour.geo
                 self.tracker.pop(elev)
             contour.age -= 1
+
+
+class CacheTracker(object):
+    """ Holds fiona geo and age of cached contour for Contours class"""
+    def __init__(self, age=None, geo=None):
+        """ Age and geo should NEVER be none. I'm being lazy. """
+        self.age = age
+        self.geo = geo
 
 
 class Contour(object):
@@ -242,7 +247,7 @@ class Delineate(object):
         schema = {'geometry': 'LineString', 'properties': {'status': 'str:25'}}
         with fiona.open(out_file, 'w', driver='ESRI Shapefile', crs=crs, schema=schema) as out:
             for line in boundary:
-                out.write({'geometry': mapping(line.shapely_geo), 'properties': {'status': 'none'}})
+                out.write({'geometry': mapping(line.shapely_geo), 'properties': {'status': line.status}})
 
     def _calc_bfe_stations(self, bfes, river):
         """
@@ -490,90 +495,59 @@ class Delineate(object):
             else:
                 raise ShapefileError('Feature in ' + self.river_file + ' is not a Linestring.')
 
+    def multi_river_import(self, river_field, reach_field):
+        """
+        Reads multiple reaches from self.river_file. river_field and reach_field are the name of attributes in the
+        self.river_file shapefile. Returns list of ADPolyline with object.river_code and object.reach_code appended to
+        them.
 
+        :param river_field: string - name of rivercode attribute field
+        :param reach_field: string - name of reachcode attribute filed
+        :return: list of ADPolyline
+        """
 
-def my_func(xs_filename, xs_id_field, bfe_filename, bfe_elev_filed, ):
-    # first_time = dt.now()
-    #
-    # out_filename = 'GHC/carp_boundary.shp'
-    # river = ad.ez_river_import('GHC/ghc_mainstem.shp')
-    #
-    # xss = ad.ez_xs_import('GHC/carp_XS.shp', 'ProfileM')
-    # bfes = ad.ez_bfe_import('GHC/carp_bfe.shp', 'Elevation')
+        if self.river_file is None:
+            raise ValueError('self.river_file must be set to name of shapefile')
 
+        rivers = []
+        with fiona.collection(self.river_file, 'r') as input_file:
+            for feature in input_file:
+                # Fiona might give a Linestring or a MultiLineString, handle both cases
+                temp_geo = shape(feature['geometry'])
+                if type(temp_geo) is MultiLineString:
+                    raise ShapefileError('Feature in ' + str(self.river_file) + ' is MultiLineString.' +
+                                         ' This is likely an error.')
+                elif type(temp_geo) is LineString:
+                    temp_river = gt.ADPolyline(shapely_geo=temp_geo)
+                    temp_river.river_code = feature['properties'][river_field]
+                    temp_river.reach_code = feature['properties'][reach_field]
+                    rivers.append(temp_river)
+                else:
+                    raise ShapefileError('Feature in ' + self.river_file + ' is not a Linestring.')
+        return rivers
 
+    def select_river(self, rivers, river_code, reach_code):
+        """
+        returns ADPolyline from rivers with river_code and reach_code
+        :param rivers: list of ADPolyline Objects from self.multi_river_import
+        :param river_code: string
+        :param reach_code: string
+        :return: ADPolyine
+        """
+        for river in rivers:
+            if river.river_code == river_code and river.reach_code == reach_code:
+                return river
+        raise ValueError('River/reach '+river_code+'/'+reach_code+' not found in rivers')
 
-    # contour_filename = 'shapes/carp_contour_clip.shp'
-    # contour_filename = 'GHC/middle_contour.shp'
-
-    # print 'Contours imported. Drawing'
-    # if not True:
-    #     for contour in contours:
-    #         contour.plot(color='grey')
-    # print 'Done drawing contours'
-    #
-    # for bfe in bfes:
-    #     bfe.geo.plot(color='red')
-    #     bfe.river_intersect.plot(marker='o')
-    #     bfe.river_intersect.label(str(bfe.elevation))
-
-
-
-    # for x in combo_list:
-    #     print x.station, type(x), x.elevation
-
-    for xs in combo_list:
-        if type(xs) is not ad.CrossSection:
-            continue
-        #print xs.id
-        xs.geo.plot(color='black')
-        xs.river_intersect.plot(marker='o')
-        xs.river_intersect.label(str(xs.id))
-        xs.left_extent.plot(marker='o')
-        xs.right_extent.plot(marker='^')
-        # posi, _, _ = ad._calc_extent_position(xs, xs.left_extent, contours)
-        # xs.left_extent.label(str(round(posi, 2)))
-        # posi, _, _ = ad._calc_extent_position(xs, xs.right_extent, contours)
-        # xs.right_extent.label(str(round(posi, 2)))
-
-    combo_list = combo_list[::-1]
-
-    # ------------------------ Delineate boundary -----------------------------------
-    now = dt.now()
-    combo_list = trim_bfe_xs(combo_list, start=5140, end=5156)
-    # combo_list = trim_bfe_xs(combo_list, start=114934, end=5150)
-    left_bound, right_bound = ad.delineate(combo_list, contours)
-    time = dt.now() - now
-    print 'done in', time
-    print len(combo_list), 'BFE/XS completed in ', (time/len(combo_list)), 'per item'
-
-
-    # print len(left_bound)
-    for i, line in enumerate(left_bound):
-         if i % 2 == 0:
-             line.plot(color='blue', linewidth=2)
-         else:
-             line.plot(color='pink', linewidth=2)
-
-    # print len(right_bound)
-    for i, line in enumerate(right_bound):
-         if i % 2 == 0:
-             line.plot(color='blue', linewidth=2)
-         else:
-             line.plot(color='pink', linewidth=2)
-
-    print 'total process complete in', (dt.now() - first_time)
-
-    pyplot.axes().set_aspect('equal', 'datalim')
-    #river.plot()
-    pyplot.show()
-
-    # Export to shapefile
-    print 'Exporting to shapefile'
-    schema = {'geometry': 'LineString', 'properties': {'status': 'str:25'}}
-    with fiona.open(out_filename, 'w', driver='ESRI Shapefile', crs=crs, schema=schema) as out:
-        for left in left_bound:
-            out.write({'geometry': mapping(left.shapely_geo), 'properties': {'status': 'asdf'}})
-        for right in right_bound:
-            out.write({'geometry': mapping(right.shapely_geo), 'properties': {'status': 'asdf'}})
-    print 'Finished exporting to shapefile'
+    def get_bfe_xs_by_river(self, river, combo_list):
+        """
+        Returns list of items of bfe/XSs in combo_list that intersect river
+        :param river: ADPolyline - river
+        :param combo_list: list of ADPolyline - bfes and cross sections
+        :return: list of ADPolyline
+        """
+        new_list = []
+        for item in combo_list:
+            if item.crosses(river):
+                new_list.append(item)
+        return new_list

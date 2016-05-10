@@ -1,6 +1,7 @@
 import autodelin.interface as ad
 import autodelin.logic as logic
 from datetime import datetime as dt
+from matplotlib import pyplot
 
 
 def main():
@@ -17,7 +18,15 @@ def main():
     crs = d.get_crs(d.contour_file)
 
     combo_list, contours = d.import_all()
-    combo_list = d.trim_bfe_xs(combo_list, start=5140, end=5100)
+    #combo_list = d.trim_bfe_xs(combo_list, start=5140, end=5100)
+    #combo_list = d.trim_bfe_xs(combo_list, start=5128, end=5130)
+
+    if False:
+        for item in combo_list:
+            if type(item) is logic.BFE:
+                item.geo.plot(color='red')
+                item.river_intersect.plot(marker='o')
+                item.river_intersect.label(str(item.elevation))
 
     now = dt.now()
     l, r = logic.delineate(combo_list, contours)
@@ -27,7 +36,7 @@ def main():
 
     boundary = l + r
     d.export_boundary(boundary, 'out.shp', crs)
-
+    pyplot.show()
 
 
 if __name__ == '__main__':
