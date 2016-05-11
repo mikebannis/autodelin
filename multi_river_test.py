@@ -11,12 +11,16 @@ def main():
     # Import all values
     mgr.import_bfes('GHC/GHC_bfe.shp')
     mgr.import_xs('GHC/GHC_XS.shp')
-    mgr.import_contours('GHC/GHC_full_contours.shp', 'ContourEle')
     mgr.import_extents('GHC/all_extents.shp', '100-yr')
-    mgr.import_single_river('GHC/GHC_all_rivers.shp')
-    mgr.calc_bfe_stations()
-    mgr.calc_xs_stations()
+    mgr.import_multi_river('GHC/GHC_all_rivers.shp', 'RiverCode', 'ReachCode')
+
+    mgr.select_river('Mainstem', 'Carpenter')
     mgr.merge_bfe_and_xs()
+    mgr.select_bfe_xs()
+    mgr.calc_stations()
+    mgr.sort_bfe_and_xs()
+
+    mgr.import_contours('GHC/GHC_full_contours.shp', 'ContourEle', chatty=True)
 
     #mgr.trim_bfe_xs(start=5140, end=5100)
     #combo_list = d.trim_bfe_xs(combo_list, start=5128, end=5130)

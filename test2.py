@@ -18,7 +18,7 @@ def main():
     mgr.calc_xs_stations()
     mgr.merge_bfe_and_xs()
 
-    #mgr.trim_bfe_xs(start=5140, end=5100)
+    mgr.trim_bfe_xs(start=5140, end=5100)
     #combo_list = d.trim_bfe_xs(combo_list, start=5128, end=5130)
 
     if False:

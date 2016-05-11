@@ -165,16 +165,16 @@ class River(object):
 
 class Rivers(object):
     def __init__(self):
-        self.rivers = []
+        self.reaches = []
 
     def get_reach(self, river, reach):
         """
-        Returns reach from self.rivers that matches river/reach
+        Returns reach from self.reaches that matches river/reach
         :param river: string - name of RAS river
         :param reach: string - name of RAS reach
         :return: River object if success, else None
         """
-        for test_river in self.rivers:
+        for test_river in self.reaches:
             if test_river.matches(river, reach):
                 return test_river
                 
@@ -194,12 +194,14 @@ class Manager(object):
         # self.outfile = None
 
         # Initialized in methods
-        self.river = None           # ADPolyline
+        self.river = None           # River object - used with single reach
+        self.rivers = None          # Rivers object - used with multiple reaches
         self.cross_sections = None  # list of CrossSection objects
         self.bfes = None            # list of logic.BFE objects
         self.contours = None        # Contours object
         self.crs = None             # crs object, from contours
         self.combo_list = None      # list of CrossSection and logic.BFE objects
+        self.full_combo_list = None # Used to store compete self.combo_list for work on multiple reaches
 
     def import_bfes(self, bfe_file, elev_field='Elevation'):
         """
@@ -287,15 +289,38 @@ class Manager(object):
                     print 'Extent for cross section', xs_id, 'has position', position, 'which is neither', self.left, \
                         'nor', self.right, 'Ignoring.'
 
+    def import_multi_river(self, river_file, river_field, reach_field):
+        """
+        Reads multiple reaches from self.river_file. river_field and reach_field are the name of attributes in the
+        self.river_file shapefile. Saves Rivers object to self.rivers
+
+        :param river_file: string - river shapefile
+        :param river_field: string - name of rivercode attribute field
+        :param reach_field: string - name of reachcode attribute filed
+        """
+        self.rivers = Rivers()
+        with fiona.collection(river_file, 'r') as input_file:
+            for feature in input_file:
+                # Fiona might give a Linestring or a MultiLineString, handle both cases
+                temp_geo = shape(feature['geometry'])
+                if type(temp_geo) is MultiLineString:
+                    raise ShapefileError('Feature in ' + river_file + ' is MultiLineString.' +
+                                         ' This is likely an error.')
+                elif type(temp_geo) is LineString:
+                    geo = gt.ADPolyline(shapely_geo=temp_geo)
+                    river_name = feature['properties'][river_field]
+                    reach_name = feature['properties'][reach_field]
+                    temp_river = River(geo, river_name, reach_name)
+                    self.rivers.reaches.append(temp_river)
+                else:
+                    raise ShapefileError('Feature in ' + river_file + ' is not a Linestring.')
+
     def import_single_river(self, river_file):
         """
-        imports river from river_file shapefile and returns ADPolyline
+        imports river from river_file shapefile
         raises exception if file has more than one feature or is not Linestring
         :param river_file: string - name of river shapefile
         """
-        if river_file is None:
-            raise ValueError('self.river_file must be set to name of shapefile')
-
         with fiona.collection(river_file, 'r') as input_file:
             feature = list(input_file)
 
@@ -308,7 +333,8 @@ class Manager(object):
                 raise ShapefileError('Feature in ' + str(river_file) + ' is MultiLineString.' +
                                      ' This is likely an error.')
             elif type(temp_geo) is LineString:
-                self.river = gt.ADPolyline(shapely_geo=temp_geo)
+                geo = gt.ADPolyline(shapely_geo=temp_geo)
+                self.river = River(geo, None, None)
             else:
                 raise ShapefileError('Feature in ' + river_file + ' is not a Linestring.')
 
@@ -334,40 +360,64 @@ class Manager(object):
                 geo = gt.ADPolyline(shapely_geo=temp_geo)
                 self.cross_sections.append(CrossSection(geo, xs_id))
 
+    def calc_stations(self):
+        """
+        Calculates stations for BFEs/XSs in self.combo_list
+        """
+        if self.river is None:
+            raise ValueError('self.river has not been defined yet')
+
+        for item in self.combo_list:
+            temp_point = self.river.geo.intersection(item.geo)
+            if type(temp_point) is MultiPoint:
+                raise ShapefileError('BFE/XS' + str(item.name) + 'crosses channel alignment multiple times.')
+            elif temp_point is None:
+                raise ShapefileError('BFE/XS' + str(item.name) + 'does not cross channel alignment. Does ' +
+                                     'select_xs_bfe() need to be run?')
+
+        item.river_intersect = temp_point
+        item.station = self.river.geo.project(item.river_intersect)
+
     def calc_bfe_stations(self):
         """
         Calculates BFE.stations for bfe's along river
         """
+        if self.river is None:
+            raise ValueError('self.river has not been defined yet')
+
         for bfe in self.bfes:
-            temp_point = self.river.intersection(bfe.geo)
+            temp_point = self.river.geo.intersection(bfe.geo)
             if type(temp_point) is MultiPoint:
-                print 'BFE', bfe.elevation, 'crosses channel alignment multiple times. Aborting'
-                raise
+                raise ShapefileError('BFE'+str(bfe.elevation)+'crosses channel alignment multiple times.')
             elif temp_point is None:
-                print 'BFE', bfe.elevation, 'does not cross channel alignment. Aborting.'
-                raise
+                raise ShapefileError('BFE'+str(bfe.elevation)+'does not cross channel alignment. Does ' +
+                                     'select_xs_bfe() need to be run?')
+
             bfe.river_intersect = temp_point
-            bfe.station = self.river.project(bfe.river_intersect)
+            bfe.station = self.river.geo.project(bfe.river_intersect)
 
     def calc_xs_stations(self):
         """
         Calculates CrossSection.stations for cross section along river
         """
         for xs in self.cross_sections:
-            temp_point = self.river.intersection(xs.geo)
+            temp_point = self.river.geo.intersection(xs.geo)
             if type(temp_point) is MultiPoint:
                 raise ShapefileError('Cross section'+str(xs.id)+'crosses channel alignment multiple times.')
             elif temp_point is None:
                 raise ShapefileError('Cross section '+str(xs.id)+' does not cross channel alignment.')
             xs.river_intersect = temp_point
-            xs.station = self.river.project(xs.river_intersect)
+            xs.station = self.river.geo.project(xs.river_intersect)
 
     def merge_bfe_and_xs(self):
         """
         Combines list of bfes and cross sections into one list sorted by station
         """
         self.combo_list = self.bfes + self.cross_sections
+
+    def sort_bfe_and_xs(self):
         self.combo_list.sort(key=lambda x: x.station)
+
 
     def run_single_reach(self):
         """
@@ -377,10 +427,6 @@ class Manager(object):
         left_bound, right_bound = logic.delineate(self.combo_list, self.contours)
         return left_bound, right_bound
 
-    def get_crs(self, filename):
-        with fiona.collection(filename, 'r') as in_file:
-            return in_file.crs
-
     def plot_boundary(self, left, right, color='blue'):
         for line in left:
             line.plot(color=color)
@@ -389,38 +435,7 @@ class Manager(object):
         pyplot.axes().set_aspect('equal', 'datalim')
         pyplot.show()
 
-    def multi_river_import(self, river_field, reach_field):
-        """
-        Reads multiple reaches from self.river_file. river_field and reach_field are the name of attributes in the
-        self.river_file shapefile. Returns list of ADPolyline with object.river_code and object.reach_code appended to
-        them.
-
-        :param river_field: string - name of rivercode attribute field
-        :param reach_field: string - name of reachcode attribute filed
-        :return: list of ADPolyline
-        """
-
-        if self.river_file is None:
-            raise ValueError('self.river_file must be set to name of shapefile')
-
-        rivers = []
-        with fiona.collection(self.river_file, 'r') as input_file:
-            for feature in input_file:
-                # Fiona might give a Linestring or a MultiLineString, handle both cases
-                temp_geo = shape(feature['geometry'])
-                if type(temp_geo) is MultiLineString:
-                    raise ShapefileError('Feature in ' + str(self.river_file) + ' is MultiLineString.' +
-                                         ' This is likely an error.')
-                elif type(temp_geo) is LineString:
-                    temp_river = gt.ADPolyline(shapely_geo=temp_geo)
-                    temp_river.river_code = feature['properties'][river_field]
-                    temp_river.reach_code = feature['properties'][reach_field]
-                    rivers.append(temp_river)
-                else:
-                    raise ShapefileError('Feature in ' + self.river_file + ' is not a Linestring.')
-        return rivers
-
-    def select_river(self, rivers, river_code, reach_code):
+    def select_river(self, river_code, reach_code):
         """
         returns ADPolyline from rivers with river_code and reach_code
         :param rivers: list of ADPolyline Objects from self.multi_river_import
@@ -428,23 +443,28 @@ class Manager(object):
         :param reach_code: string
         :return: ADPolyine
         """
-        for river in rivers:
-            if river.river_code == river_code and river.reach_code == reach_code:
-                return river
-        raise ValueError('River/reach '+river_code+'/'+reach_code+' not found in rivers')
+        x = self.rivers.get_reach(river_code, reach_code)
+        if x is not None:
+            self.river = x
+        else:
+            raise ValueError('River/reach '+river_code+'/'+reach_code+' not found in rivers')
 
-    def get_bfe_xs_by_river(self, river, combo_list):
+    def select_bfe_xs(self):
         """
         Returns list of items of bfe/XSs in combo_list that intersect river
         :param river: ADPolyline - river
         :param combo_list: list of ADPolyline - bfes and cross sections
         :return: list of ADPolyline
         """
+        if self.combo_list is None:
+            raise ValueError('combo_list is not yet defined. Does merge_bfe_and_xs() need to be run?')
+
+        self.full_combo_list = self.combo_list
         new_list = []
-        for item in combo_list:
-            if item.crosses(river):
+        for item in self.combo_list:
+            if item.geo.crosses(self.river.geo):
                 new_list.append(item)
-        return new_list
+        self.combo_list = new_list
 
     def trim_bfe_xs(self, start=None, end=None):
         """
