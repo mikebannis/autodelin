@@ -375,8 +375,8 @@ class Manager(object):
                 raise ShapefileError('BFE/XS' + str(item.name) + 'does not cross channel alignment. Does ' +
                                      'select_xs_bfe() need to be run?')
 
-        item.river_intersect = temp_point
-        item.station = self.river.geo.project(item.river_intersect)
+            item.river_intersect = temp_point
+            item.station = self.river.geo.project(item.river_intersect)
 
     def calc_bfe_stations(self):
         """
@@ -418,6 +418,11 @@ class Manager(object):
     def sort_bfe_and_xs(self):
         self.combo_list.sort(key=lambda x: x.station)
 
+    def reset_combo_list(self):
+        """
+        Resets self.combo_list to the original. Used for multiple reaches
+        """
+        self.combo_list = self.full_combo_list
 
     def run_single_reach(self):
         """
@@ -448,6 +453,7 @@ class Manager(object):
             self.river = x
         else:
             raise ValueError('River/reach '+river_code+'/'+reach_code+' not found in rivers')
+        print 'Successfully selected', river_code, '/', reach_code
 
     def select_bfe_xs(self):
         """

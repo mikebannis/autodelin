@@ -109,7 +109,7 @@ def delineate(bfe_cross_sections, contours):
                     print 'Bad extent, ignoring.'
                     continue
 
-            print 'last low pt', type(last_low_pt), last_low_pt, 'current_low_pt', type(current_low_pt), current_low_pt
+            #print 'last low pt', type(last_low_pt), last_low_pt, 'current_low_pt', type(current_low_pt), current_low_pt
             # trim contours between current and last BFE/XS
             low_contour = _clip_to_bfe(orig_low_contour, last_low_pt, current_low_pt)
             high_contour = _clip_to_bfe(orig_high_contour, last_high_pt, current_high_pt)
