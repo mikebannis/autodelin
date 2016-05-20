@@ -3,7 +3,8 @@ import geo_tools as gt
 import fiona
 from shapely.geometry import shape, MultiLineString, LineString, MultiPoint, Point, mapping
 from matplotlib import pyplot
-from collections import namedtuple
+import pathos.multiprocessing as mp
+
 
 
 class ShapefileError (Exception):
@@ -423,6 +424,58 @@ class Manager(object):
         Resets self.combo_list to the original. Used for multiple reaches
         """
         self.combo_list = self.full_combo_list
+
+    def run_multi_reach(self, river_reach):
+        """
+        Delineates river/reach combos in river_reach. Returns boundary
+        :param river_reach: list of tuples: (river, reach)
+        :return: left, right - two list of ADPolylines
+        """
+        left = []
+        right = []
+        for river, reach in river_reach:
+            self.select_river(river, reach)
+            self.merge_bfe_and_xs()
+            self.select_bfe_xs()
+            self.calc_stations()
+            self.sort_bfe_and_xs()
+            l, r = self.run_single_reach()
+            left += l
+            right += r
+            self.reset_combo_list()
+        return left, right
+
+    def run_multi_reach_smp(self, river_reach, workers=4):
+        """
+        Delineates river/reach combos in river_reach using multiple processes. Returns boundary
+        :param river_reach: list of tuples: (river, reach)
+        :param workers: number of processes to use
+        :return: left, right - two lists of ADPolylines
+        """
+        print 'creating pool'
+        pool = mp.ProcessingPool(workers)
+        print ' running pool.map'
+        results = list(pool.map(self.run_named_reach, river_reach))
+        return results
+
+    def run_named_reach(self, river_reach):
+        """
+        Delineates river/reach in river_reach. Returns boundary
+        :param river_reach: tuple: (river, reach)
+        :return: list ADPolyline - left and right boundaries
+        """
+        river, reach = river_reach
+        print 'selecting', river_reach
+        self.select_river(river, reach)
+        self.merge_bfe_and_xs()
+        self.select_bfe_xs()
+        self.calc_stations()
+        self.sort_bfe_and_xs()
+        print 'delineating single reach', river_reach
+        l, r = self.run_single_reach()
+        print 'done delineating', river_reach
+        self.reset_combo_list()
+        return l + r
 
     def run_single_reach(self):
         """

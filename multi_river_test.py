@@ -3,7 +3,6 @@ import autodelin.logic as logic
 from datetime import datetime as dt
 from matplotlib import pyplot
 
-
 def main():
     first_now = dt.now()
     mgr = ad.Manager()
@@ -15,23 +14,16 @@ def main():
     mgr.import_extents('GHC/all_extents.shp', '100-yr')
     mgr.import_multi_river('GHC/GHC_all_rivers.shp', 'RiverCode', 'ReachCode')
     mgr.import_contours('GHC/GHC_full_contours.shp', 'ContourEle', chatty=True)
-
-    rivers = [('South Trib', 'South Trib'), ('Mainstem', 'Carpenter'), ('Mainstem', 'Middle')]
-
-    boundary = []
-    for river, reach in rivers:
-        mgr.select_river(river, reach)
-        mgr.merge_bfe_and_xs()
-        mgr.select_bfe_xs()
-        mgr.calc_stations()
-        mgr.sort_bfe_and_xs()
-        l, r = mgr.run_single_reach()
-        boundary += l
-        boundary += r
-        mgr.reset_combo_list()
+    print 'imports complete, begining smp'
+    # rivers = [('South Trib', 'South Trib'), ('Mainstem', 'Carpenter'), ('Mainstem', 'Middle')]
+    rivers = [('Mainstem', 'Carpenter'), ('Mainstem', 'Middle')]
+    results = mgr.run_multi_reach_smp(rivers, workers=2)
+    print 'length results=', len(results)
+    print results
 
     print 'Imports and delineation in ', (dt.now() - first_now)
 
+    boundary = [x for single_result in results for x in single_result]
     mgr.export_boundary(boundary, 'out.shp')
 
 
