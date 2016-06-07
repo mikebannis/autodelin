@@ -1,8 +1,9 @@
 import math
 import geo_tools as gt
-from fiona import collection
-from shapely.geometry import shape, MultiLineString, LineString, MultiPoint, Point
+import segment
 from matplotlib import pyplot
+import pathos.multiprocessing as mp
+import datetime
 
 DEBUG1 = gt.DEBUG1
 DEBUG2 = gt.DEBUG2
@@ -66,6 +67,7 @@ def delineate(bfe_cross_sections, contours):
 
     # Do left side -----------------------------------------------------------------------------
     print '--'*20+'left side'
+    left_segments = []
     left_boundary = []
     # Find first valid bfe/cross_section
     remaining_bfe_xs = None
@@ -89,7 +91,7 @@ def delineate(bfe_cross_sections, contours):
 
     # Loop through all the remaining BFE/XS
     for current_bfe_xs in remaining_bfe_xs:
-        print '*******Working on last', last_bfe_xs.name, 'to current', current_bfe_xs.name
+        print 'L*******Working on last', last_bfe_xs.name, 'to current', current_bfe_xs.name
         try:
             orig_low_contour = contours.get(math.floor(last_bfe_xs.elevation))
             orig_high_contour = contours.get(math.ceil(current_bfe_xs.elevation))
@@ -126,19 +128,20 @@ def delineate(bfe_cross_sections, contours):
                 high_contour.first_point.plot(marker='o')
                 high_contour.last_point.plot(marker='o')
 
-            boundary = gt.draw_line_between_contours(low_contour, high_contour, last_position, current_position)
-            if type(boundary) is gt.ADPolyline:
-                print 'Success'
-            if _contour_crosses_boundary(boundary, orig_high_contour, orig_low_contour):
-                status = 'Crosses'
-            else:
-                status = 'OK'
-            boundary.status = status
+            # Create segment and add to list
+            temp_seg = segment.Segment(low_contour, high_contour, last_position, current_position)
+            left_segments.append(temp_seg)
 
-            left_boundary.append(boundary)
+            # if type(boundary) is gt.ADPolyline:
+            #     print 'Success'
+            # if _contour_crosses_boundary(boundary, orig_high_contour, orig_low_contour):
+            #     status = 'Crosses'
+            # else:
+            #     status = 'OK'
+            # boundary.status = status
+            #
+            # left_boundary.append(boundary)
 
-            if DEBUG1:
-                boundary.plot(marker='D')
         except ComplexContourError:
             print 'Left: Funky contour'
         except ContourNotFound:
@@ -165,6 +168,26 @@ def delineate(bfe_cross_sections, contours):
         else:
             last_position = current_position
 
+    now = datetime.datetime.now()
+    # run segments
+    if not True:
+        print 'running segments'
+        for current_segment in left_segments:
+            result = current_segment.run()
+            result.status = 'testing'
+            left_boundary.append(result)
+    else:
+        print 'creating pool'
+        pool = mp.ProcessingPool()
+        print ' running pool.map'
+        left_boundary = list(pool.map(segment.run_seg, left_segments))
+
+    print 'completed in', datetime.datetime.now() - now
+
+    for x in left_boundary:
+        x.status = 'testing'
+
+
     # Do right side --------------------------------------------------------------------------
     print '--'*20+'right side'
     right_boundary = []
@@ -190,7 +213,7 @@ def delineate(bfe_cross_sections, contours):
 
     # Loop through all the remaining BFE/XS
     for current_bfe_xs in remaining_bfe_xs:
-        print '*******Working on last', last_bfe_xs.name, 'to current', current_bfe_xs.name
+        print 'R*******Working on last', last_bfe_xs.name, 'to current', current_bfe_xs.name
         try:
             orig_low_contour = contours.get(math.floor(last_bfe_xs.elevation))
             orig_high_contour = contours.get(math.ceil(current_bfe_xs.elevation))

@@ -16,8 +16,9 @@ def main():
     mgr.import_contours('GHC/GHC_full_contours.shp', 'ContourEle', chatty=True)
     print 'imports complete, begining smp'
     # rivers = [('South Trib', 'South Trib'), ('Mainstem', 'Carpenter'), ('Mainstem', 'Middle')]
-    rivers = [('Mainstem', 'Carpenter'), ('Mainstem', 'Middle')]
-    results = mgr.run_multi_reach_smp(rivers, workers=2)
+    # rivers = [('Mainstem', 'Carpenter'), ('Mainstem', 'Middle')]
+    rivers = [('Mainstem', 'Carpenter')]
+    results = mgr.run_multi_reach(rivers)
     print 'length results=', len(results)
     print results
 
