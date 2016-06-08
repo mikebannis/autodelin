@@ -177,10 +177,17 @@ def delineate(bfe_cross_sections, contours):
             result.status = 'testing'
             left_boundary.append(result)
     else:
-        print 'creating pool'
-        pool = mp.ProcessingPool()
-        print ' running pool.map'
-        left_boundary = list(pool.map(segment.run_seg, left_segments))
+        for i in range(1, 9):
+            print i, 'workers, running with that many - yoda'
+            now = datetime.datetime.now()
+
+            print 'creating pool'
+            pool = mp.ProcessingPool(workers=i)
+            print ' running pool.map'
+            left_boundary = list(pool.map(segment.run_seg, left_segments))
+            del pool
+            print 'completed in', datetime.datetime.now() - now
+
 
     print 'completed in', datetime.datetime.now() - now
 
