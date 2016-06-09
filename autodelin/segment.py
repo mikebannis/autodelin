@@ -10,6 +10,7 @@ class Segment(object):
         self.high_contour = high_contour
         self.last_pos = last_pos
         self.current_pos = current_pos
+        # TODO - Add cross sections and contours to this list and check for intersections after running, update status
 
     def run(self):
         return gt.draw_line_between_contours(self.low_contour, self.high_contour, self.last_pos, self.current_pos)
