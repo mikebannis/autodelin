@@ -12,6 +12,7 @@ NEW_DEBUG = False
 LEFT = 'left'
 RIGHT = 'right'
 
+
 class ContourNotFound(Exception):
     pass
 
@@ -46,7 +47,15 @@ class BFE(object):
         pyplot.annotate(str(int(self.elevation)), xy=(X, Y))
         self.geo.plot(*args, **kwargs)
 
-def new_delineate(bfe_cross_sections, contours, workers=0):
+    def __str__(self):
+        return 'bfe-' + str(self.name)
+
+    def __repr__(self):
+        return str(self)
+
+
+def delineate(bfe_cross_sections, contours, workers=0):
+    # TODO - fill out doc string
     """
 
     :param bfe_cross_sections:
@@ -54,12 +63,18 @@ def new_delineate(bfe_cross_sections, contours, workers=0):
     :param workers: no SMP if 0, uses smp with workers workers if non zero
     :return:
     """
+    # Check for proper order
+    if bfe_cross_sections[0].elevation > bfe_cross_sections[-1].elevation:
+        print 'BFE/cross section list appears to be in reverse order. Reversing.'
+        bfe_cross_sections = bfe_cross_sections[::-1]
+
     l_bound = delineate_side(bfe_cross_sections, contours, LEFT, workers)
     r_bound = delineate_side(bfe_cross_sections, contours, RIGHT, workers)
     return l_bound + r_bound
 
 
 def delineate_side(bfe_cross_sections, contours, side, workers):
+    # TODO - fill out doc string
     """
 
     :param bfe_cross_sections:
@@ -69,11 +84,6 @@ def delineate_side(bfe_cross_sections, contours, side, workers):
     :return:
     """
     # TODO - make this whole thing an object
-    # Check for proper order
-    if bfe_cross_sections[0].elevation > bfe_cross_sections[-1].elevation:
-        print 'BFE/cross section list appears to be in reverse order. Reversing.'
-        bfe_cross_sections = bfe_cross_sections[::-1]
-
     # Set attribute names for LEFT vs RIGHT
     if side == LEFT:
         end_point = 'first_point'
@@ -83,6 +93,8 @@ def delineate_side(bfe_cross_sections, contours, side, workers):
         extent = 'right_extent'
     else:
         raise ValueError('side was set to '+side+'. side must be '+LEFT+' or '+RIGHT)
+
+    print '******** Working on', side, 'side'
 
     # Find first valid bfe/cross_section
     remaining_bfe_xs = None
@@ -102,13 +114,13 @@ def delineate_side(bfe_cross_sections, contours, side, workers):
                 break
     if remaining_bfe_xs is None:
         print 'Error finding valid BFE/cross section'
-        raise
+        raise # TODO - fix me
 
     segments = []
     boundary = []
     # Loop through all the remaining BFE/XS
     for current_bfe_xs in remaining_bfe_xs:
-        print 'L*******Working on last', last_bfe_xs.name, 'to current', current_bfe_xs.name
+        print '---Working on last', last_bfe_xs.name, 'to current', current_bfe_xs.name
         try:
             orig_low_contour = contours.get(math.floor(last_bfe_xs.elevation))
             orig_high_contour = contours.get(math.ceil(current_bfe_xs.elevation))
@@ -119,10 +131,11 @@ def delineate_side(bfe_cross_sections, contours, side, workers):
                 current_high_pt = getattr(current_bfe_xs, end_point)
                 # current_low_pt is found by intersecting current BFE w/ low contour
                 temp_low_contour = _closest_contour_segment(orig_low_contour, getattr(current_bfe_xs, end_point))
-                current_low_pt = current_bfe_xs.geo.nearest_intersection(temp_low_contour, getattr(current_bfe_xs, end_point))
+                current_low_pt = current_bfe_xs.geo.nearest_intersection(temp_low_contour, getattr(current_bfe_xs,
+                                                                                                   end_point))
             else:  # CrossSection
                 current_position, current_high_pt, current_low_pt = \
-                    _calc_extent_position(current_bfe_xs, current_bfe_xs.left_extent, contours)
+                    _calc_extent_position(current_bfe_xs, getattr(current_bfe_xs, extent), contours)
                 # Ignore extent if outside of contours
                 if current_position < 0:
                     print 'Bad extent, ignoring.'
@@ -147,17 +160,11 @@ def delineate_side(bfe_cross_sections, contours, side, workers):
 
             # Create segment and add to list
             temp_seg = segment.Segment(low_contour, high_contour, last_position, current_position)
-            left_segments.append(temp_seg)
+            temp_seg.current_feature = current_bfe_xs
+            temp_seg.last_feature = last_bfe_xs
+            segments.append(temp_seg)
 
-            # if type(boundary) is gt.ADPolyline:
-            #     print 'Success'
-            # if _contour_crosses_boundary(boundary, orig_high_contour, orig_low_contour):
-            #     status = 'Crosses'
-            # else:
-            #     status = 'OK'
-            # boundary.status = status
-            #
-            # left_boundary.append(boundary)
+
 
         except ComplexContourError:
             print 'Left: Funky contour'
@@ -184,11 +191,12 @@ def delineate_side(bfe_cross_sections, contours, side, workers):
         else:
             last_position = current_position
 
+    # ---------------- run segments -----------------
     now = datetime.datetime.now()
-    # run segments
     if workers == 0:  # Don't use SMP
-        print 'running segments'
+        print 'running segments (no SMP)'
         for current_segment in segments:
+            print str(current_segment)
             result = current_segment.run()
             result.status = 'testing'
             boundary.append(result)
@@ -204,7 +212,7 @@ def delineate_side(bfe_cross_sections, contours, side, workers):
     return boundary
 
 
-def delineate(bfe_cross_sections, contours):
+def delineate_old(bfe_cross_sections, contours):
     """
     Creates floodplain boundaries based on bfes and cross sections along contours
 

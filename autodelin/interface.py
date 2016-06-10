@@ -142,6 +142,12 @@ class CrossSection(object):
         pyplot.annotate(str(int(self.id)), xy=(X, Y))
         self.geo.plot(*args, **kwargs)
 
+    def __str__(self):
+        return 'cross section-' + str(self.name)
+
+    def __repr__(self):
+        return str(self)
+
 
 class River(object):
     """
@@ -203,6 +209,8 @@ class Manager(object):
         self.crs = None             # crs object, from contours
         self.combo_list = None      # list of CrossSection and logic.BFE objects
         self.full_combo_list = None # Used to store compete self.combo_list for work on multiple reaches
+
+        self.workers = 0            # Number of works for SMP, 0 = no SMP
 
     def import_bfes(self, bfe_file, elev_field='Elevation'):
         """
@@ -425,38 +433,37 @@ class Manager(object):
         """
         self.combo_list = self.full_combo_list
 
+   
     def run_multi_reach(self, river_reach):
         """
         Delineates river/reach combos in river_reach. Returns boundary
         :param river_reach: list of tuples: (river, reach)
         :return: left, right - two list of ADPolylines
         """
-        left = []
-        right = []
+        boundary = []
         for river, reach in river_reach:
             self.select_river(river, reach)
             self.merge_bfe_and_xs()
             self.select_bfe_xs()
             self.calc_stations()
             self.sort_bfe_and_xs()
-            l, r = self.run_single_reach()
-            left += l
-            right += r
+            b = self.run_single_reach()
+            boundary += b
             self.reset_combo_list()
-        return left, right
+        return boundary
 
-    def run_multi_reach_smp(self, river_reach, workers=4):
-        """
-        Delineates river/reach combos in river_reach using multiple processes. Returns boundary
-        :param river_reach: list of tuples: (river, reach)
-        :param workers: number of processes to use
-        :return: left, right - two lists of ADPolylines
-        """
-        print 'creating pool'
-        pool = mp.ProcessingPool(workers)
-        print ' running pool.map'
-        results = list(pool.map(self.run_named_reach, river_reach))
-        return results
+    # def run_multi_reach_smp(self, river_reach, workers=4):
+    #     """
+    #     Delineates river/reach combos in river_reach using multiple processes. Returns boundary
+    #     :param river_reach: list of tuples: (river, reach)
+    #     :param workers: number of processes to use
+    #     :return: left, right - two lists of ADPolylines
+    #     """
+    #     print 'creating pool'
+    #     pool = mp.ProcessingPool(workers)
+    #     print ' running pool.map'
+    #     results = list(pool.map(self.run_named_reach, river_reach))
+    #     return results
 
     def run_named_reach(self, river_reach):
         """
@@ -482,8 +489,8 @@ class Manager(object):
         Delinate single reach. Assumed all features in shapefiles belong to the same reach
         :return: left list of ADpolyline boundaries, right list of Adpolyine boundaries
         """
-        left_bound, right_bound = logic.delineate(self.combo_list, self.contours)
-        return left_bound, right_bound
+        boundary = logic.delineate(self.combo_list, self.contours, workers=self.workers)
+        return boundary
 
     def plot_boundary(self, left, right, color='blue'):
         for line in left:

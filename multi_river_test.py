@@ -9,6 +9,7 @@ def main():
 
 
     # Import all values
+    mgr.workers = 2
     mgr.import_bfes('GHC/GHC_bfe.shp')
     mgr.import_xs('GHC/GHC_XS.shp')
     mgr.import_extents('GHC/all_extents.shp', '100-yr')
@@ -18,13 +19,14 @@ def main():
     # rivers = [('South Trib', 'South Trib'), ('Mainstem', 'Carpenter'), ('Mainstem', 'Middle')]
     # rivers = [('Mainstem', 'Carpenter'), ('Mainstem', 'Middle')]
     rivers = [('Mainstem', 'Carpenter')]
-    results = mgr.run_multi_reach(rivers)
-    print 'length results=', len(results)
-    print results
+    #rivers = [('Mainstem', 'Middle')]
+    boundary = mgr.run_multi_reach(rivers)
+    print 'length results=', len(boundary)
+    print boundary
 
     print 'Imports and delineation in ', (dt.now() - first_now)
 
-    boundary = [x for single_result in results for x in single_result]
+#    boundary = [x for single_result in results for x in single_result]
     mgr.export_boundary(boundary, 'out.shp')
 
 
