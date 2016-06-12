@@ -14,8 +14,8 @@ def main():
     mgr.import_contours('GHC/GHC_full_contours.shp', 'ContourEle')
     mgr.import_extents('GHC/all_extents.shp', '100-yr')
     mgr.import_single_river('GHC/ghc_mainstem.shp')
-    mgr.calc_bfe_stations()
-    mgr.calc_xs_stations()
+    mgr._calc_bfe_stations()
+    mgr._calc_xs_stations()
     mgr.merge_bfe_and_xs()
 
     mgr.trim_bfe_xs(start=5140, end=5100)

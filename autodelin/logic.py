@@ -35,7 +35,7 @@ class BFE(object):
         self.geo = geo
         self.elevation = elevation
         self.name = elevation
-        # Following are populated by calc_bfe_stations()
+        # Following are populated by _calc_bfe_stations()
         self.river_intersect = None
         self.station = None
         self.first_point = self.geo.first_point
