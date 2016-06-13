@@ -15,13 +15,12 @@ def main():
     mgr.import_extents('GHC/all_extents.shp', '100-yr')
     mgr.import_multi_river('GHC/GHC_all_rivers.shp', 'RiverCode', 'ReachCode')
     mgr.import_contours('GHC/GHC_full_contours.shp', 'ContourEle', chatty=True)
-    print 'imports complete, begining smp'
     # rivers = [('South Trib', 'South Trib'), ('Mainstem', 'Carpenter'), ('Mainstem', 'Middle')]
     rivers = [('Mainstem', 'Carpenter'), ('Mainstem', 'Middle')]
     #rivers = [('Mainstem', 'Carpenter')]
     #rivers = [('Mainstem', 'Middle')]
-    boundary = mgr.run_multi_reach(rivers)
-    #mgr.run_all_reaches()
+    # boundary = mgr.run_multi_reach(rivers)
+    boundary = mgr.run_all_reaches()
     print 'length results=', len(boundary)
     print boundary
 

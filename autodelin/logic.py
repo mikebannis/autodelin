@@ -120,7 +120,7 @@ def delineate_side(bfe_cross_sections, contours, side, workers):
     boundary = []
     # Loop through all the remaining BFE/XS
     for current_bfe_xs in remaining_bfe_xs:
-        print '---Working on last', last_bfe_xs.name, 'to current', current_bfe_xs.name
+        print '--- Segmenting last', last_bfe_xs.name, 'to current', current_bfe_xs.name
         try:
             orig_low_contour = contours.get(math.floor(last_bfe_xs.elevation))
             orig_high_contour = contours.get(math.ceil(current_bfe_xs.elevation))
@@ -164,16 +164,14 @@ def delineate_side(bfe_cross_sections, contours, side, workers):
             temp_seg.last_feature = last_bfe_xs
             segments.append(temp_seg)
 
-
-
         except ComplexContourError:
-            print 'Left: Funky contour'
+            print 'Funky contour - skipping'
         except ContourNotFound:
-            print 'Left: Contour not found'
+            print 'Contour not found'
         except gt.UnknownIntersection:
-            print 'Left: Contour doesn\'t intersect BFE/cross section'
+            print 'Contour doesn\'t intersect BFE/cross section'
         except Exception as e:
-            print 'Left: unknown exception:', str(e)
+            print 'Unknown exception:', str(e)
 
         # Reset for next BFE/XS
         last_bfe_xs = current_bfe_xs
@@ -194,275 +192,22 @@ def delineate_side(bfe_cross_sections, contours, side, workers):
     # ---------------- run segments -----------------
     now = datetime.datetime.now()
     if workers == 0:  # Don't use SMP
-        print 'running segments (no SMP)'
+        print 'Delineating segments (no SMP)'
         for current_segment in segments:
             print str(current_segment)
             result = current_segment.run()
             result.status = 'testing'
             boundary.append(result)
     else:
-            print 'creating pool'
-            pool = mp.ProcessingPool(workers=workers)
-            print ' running pool.map'
-            boundary = list(pool.map(segment.run_seg, segments))
-    print 'completed in', datetime.datetime.now() - now
+        pool = mp.ProcessingPool(workers=workers)
+        print 'Delineating', len(segments), 'segments with', workers, 'sub processes.'
+        boundary = list(pool.map(segment.run_seg, segments))
+    time = datetime.datetime.now() - now
+    print 'Completed', len(segments), 'in', time, '.', (time/len(segments)), 'per segment.'
 
     for x in boundary:
         x.status = 'testing'
     return boundary
-
-
-def delineate_old(bfe_cross_sections, contours):
-    """
-    Creates floodplain boundaries based on bfes and cross sections along contours
-
-    This works with pairs of BFEs/cross sections. For a given pair, each BFE/XS is intersected with the contours to
-    create clipping points (current_high_pt, current_low_pt, last_high_pt, last_low_pt). Two position float variables
-    are also created indicated the location at which the boundary should cross the BFE/XS. For BFE's the position will
-    be 0 for the downstream BFE and 1.0 for the upstream BFE. For cross sections the position will be a variable
-    between 1.0 and 0.0. Cross section extents that are horizontally outside the two appropriate contours are
-    ignored.
-
-    :param bfe_cross_sections: list of BFE and Cross section objects, sorted downstream to upstream
-    :param contours: Contours object
-    :return: two lists of ADPolyline objects, left boundary and right boundary
-    """
-    # Check for proper order
-    if bfe_cross_sections[0].elevation > bfe_cross_sections[-1].elevation:
-        print 'BFE/cross section list appears to be in reverse order. Reversing.'
-        bfe_cross_sections = bfe_cross_sections[::-1]
-
-    # Do left side -----------------------------------------------------------------------------
-    print '--'*20+'left side'
-    left_segments = []
-    left_boundary = []
-    # Find first valid bfe/cross_section
-    remaining_bfe_xs = None
-    for i, bfe_xs in enumerate(bfe_cross_sections):
-        last_bfe_xs = bfe_xs
-        if type(last_bfe_xs) is BFE:
-            last_position = 0.0
-            last_high_pt = last_bfe_xs.first_point
-            last_low_pt = last_bfe_xs.first_point
-            remaining_bfe_xs = bfe_cross_sections[i+1:]
-            break
-        else:  # cross section
-            last_position, last_high_pt, last_low_pt = _calc_extent_position(last_bfe_xs,
-                                                                             last_bfe_xs.left_extent, contours)
-            if last_position >= 0:
-                remaining_bfe_xs = bfe_cross_sections[i+1:]
-                break
-    if remaining_bfe_xs is None:
-        print 'Error finding valid BFE/cross section'
-        raise
-
-    # Loop through all the remaining BFE/XS
-    for current_bfe_xs in remaining_bfe_xs:
-        print 'L*******Working on last', last_bfe_xs.name, 'to current', current_bfe_xs.name
-        try:
-            orig_low_contour = contours.get(math.floor(last_bfe_xs.elevation))
-            orig_high_contour = contours.get(math.ceil(current_bfe_xs.elevation))
-            # Calculate current high and low points for clipping contours
-            if type(current_bfe_xs) is BFE:
-                # current_high_pt is last vertex on BFE
-                current_position = 1
-                current_high_pt = current_bfe_xs.first_point
-                # current_low_pt is found by intersecting current BFE w/ low contour
-                temp_low_contour = _closest_contour_segment(orig_low_contour, current_bfe_xs.first_point)
-                current_low_pt = current_bfe_xs.geo.nearest_intersection(temp_low_contour, current_bfe_xs.first_point)
-            else:  # CrossSection
-                current_position, current_high_pt, current_low_pt = \
-                    _calc_extent_position(current_bfe_xs, current_bfe_xs.left_extent, contours)
-                # Ignore extent if outside of contours
-                if current_position < 0:
-                    print 'Bad extent, ignoring.'
-                    continue
-
-            #print 'last low pt', type(last_low_pt), last_low_pt, 'current_low_pt', type(current_low_pt), current_low_pt
-            # trim contours between current and last BFE/XS
-            low_contour = _clip_to_bfe(orig_low_contour, last_low_pt, current_low_pt)
-            high_contour = _clip_to_bfe(orig_high_contour, last_high_pt, current_high_pt)
-
-            # force contours to point upstream
-            _orient_contours(last_low_pt, low_contour)
-            _orient_contours(last_high_pt, high_contour)
-
-            if NEW_DEBUG:
-                low_contour.plot(color='black', linewidth=2)
-                high_contour.plot(color='red')
-                low_contour.first_point.plot(marker='o')
-                low_contour.last_point.plot(marker='o')
-                high_contour.first_point.plot(marker='o')
-                high_contour.last_point.plot(marker='o')
-
-            # Create segment and add to list
-            temp_seg = segment.Segment(low_contour, high_contour, last_position, current_position)
-            left_segments.append(temp_seg)
-
-            # if type(boundary) is gt.ADPolyline:
-            #     print 'Success'
-            # if _contour_crosses_boundary(boundary, orig_high_contour, orig_low_contour):
-            #     status = 'Crosses'
-            # else:
-            #     status = 'OK'
-            # boundary.status = status
-            #
-            # left_boundary.append(boundary)
-
-        except ComplexContourError:
-            print 'Left: Funky contour'
-        except ContourNotFound:
-            print 'Left: Contour not found'
-        except gt.UnknownIntersection:
-            print 'Left: Contour doesn\'t intersect BFE/cross section'
-        except Exception as e:
-            print 'Left: unknown exception:', str(e)
-
-
-        # Reset for next BFE/XS
-        last_bfe_xs = current_bfe_xs
-        if type(last_bfe_xs) is BFE:
-            # BFE, last high is new low
-            last_low_pt = current_high_pt
-            # Hack, should extend BFE or intersect XS
-            last_high_pt = current_high_pt
-        else: # Cross section
-            last_low_pt = current_low_pt
-            # Hack, should extend BFE or intersect XS
-            last_high_pt = current_high_pt
-        if current_position == 1:
-            last_position = 0
-        else:
-            last_position = current_position
-
-    now = datetime.datetime.now()
-    # run segments
-    if not True:
-        print 'running segments'
-        for current_segment in left_segments:
-            result = current_segment.run()
-            result.status = 'testing'
-            left_boundary.append(result)
-    else:
-        for i in range(1, 9):
-            print i, 'workers, running with that many - yoda'
-            now = datetime.datetime.now()
-
-            print 'creating pool'
-            pool = mp.ProcessingPool(workers=i)
-            print ' running pool.map'
-            left_boundary = list(pool.map(segment.run_seg, left_segments))
-            del pool
-            print 'completed in', datetime.datetime.now() - now
-
-
-    print 'completed in', datetime.datetime.now() - now
-
-    for x in left_boundary:
-        x.status = 'testing'
-
-
-    # Do right side --------------------------------------------------------------------------
-    print '--'*20+'right side'
-    right_boundary = []
-    # Find first valid bfe/cross_section
-    remaining_bfe_xs = None
-    for i, bfe_xs in enumerate(bfe_cross_sections):
-        last_bfe_xs = bfe_xs
-        if type(last_bfe_xs) is BFE:
-            last_position = 0.0
-            last_high_pt = last_bfe_xs.last_point
-            last_low_pt = last_bfe_xs.last_point
-            remaining_bfe_xs = bfe_cross_sections[i+1:]
-            break
-        else:  # cross section
-            last_position, last_high_pt, last_low_pt = _calc_extent_position(last_bfe_xs,
-                                                                             last_bfe_xs.right_extent, contours)
-            if last_position >= 0:
-                remaining_bfe_xs = bfe_cross_sections[i+1:]
-                break
-    if remaining_bfe_xs is None:
-        print 'Error finding valid BFE/cross section'
-        raise
-
-    # Loop through all the remaining BFE/XS
-    for current_bfe_xs in remaining_bfe_xs:
-        print 'R*******Working on last', last_bfe_xs.name, 'to current', current_bfe_xs.name
-        try:
-            orig_low_contour = contours.get(math.floor(last_bfe_xs.elevation))
-            orig_high_contour = contours.get(math.ceil(current_bfe_xs.elevation))
-            # Determine high and low points at current BFE/XS for clipping contours
-            if type(current_bfe_xs) is BFE:
-                current_position = 1
-                # high clip point is end of BFE line
-                current_high_pt = current_bfe_xs.last_point
-                temp_low_contour = _closest_contour_segment(orig_low_contour, current_bfe_xs.last_point)
-                # temp_low_contour.plot()
-                # current_bfe_xs.geo.plot(color='orange')
-                # print 'orig_low_elevation=', orig_low_contour.elevation
-                current_low_pt = current_bfe_xs.geo.nearest_intersection(temp_low_contour, current_bfe_xs.last_point)
-            else:  # CrossSection
-                current_position, current_high_pt, current_low_pt = \
-                    _calc_extent_position(current_bfe_xs, current_bfe_xs.right_extent, contours)
-                # Ignore extent if outside of contours
-                if current_position < 0:
-                    print 'Bad extent, ignoring.'
-                    continue
-
-            #print 'last low pt', type(last_low_pt), last_low_pt, 'current_low_pt', type(current_low_pt), current_low_pt
-            # Clip contour based on orig/current high/low points
-            low_contour = _clip_to_bfe(orig_low_contour, last_low_pt, current_low_pt)
-            high_contour = _clip_to_bfe(orig_high_contour, last_high_pt, current_high_pt)
-
-            # Make contours point up hill
-            _orient_contours(last_low_pt, low_contour)
-            _orient_contours(last_high_pt, high_contour)
-
-            if NEW_DEBUG:
-                low_contour.plot(color='black', linewidth=2)
-                high_contour.plot(color='red')
-                low_contour.first_point.plot(marker='o')
-                low_contour.last_point.plot(marker='o')
-                high_contour.first_point.plot(marker='o')
-                high_contour.last_point.plot(marker='o')
-
-            boundary = gt.draw_line_between_contours(low_contour, high_contour, last_position, current_position)
-            if type(boundary) is gt.ADPolyline:
-                print 'Success'
-            if _contour_crosses_boundary(boundary, orig_high_contour, orig_low_contour):
-                status = 'Crosses'
-            else:
-                status = 'OK'
-            boundary.status = status
-            right_boundary.append(boundary)
-
-            if DEBUG1:
-                boundary.plot(marker='D')
-        except ComplexContourError:
-            print 'Right: Funky contour'
-        except ContourNotFound:
-            print 'Right: Contour not found'
-        except gt.UnknownIntersection:
-            print 'Left: Contour doesn\'t intersect BFE/cross section'
-        except Exception as e:
-            print 'Right: unknown exception:', str(e)
-
-
-        # Reset for next BFE/XS
-        last_bfe_xs = current_bfe_xs
-        if type(last_bfe_xs) is BFE:
-            # BFE, last high is new low
-            last_low_pt = current_high_pt
-            # Hack, should extend BFE or intersect XS
-            last_high_pt = current_high_pt
-        else:  # Cross section
-            last_low_pt = current_low_pt
-            last_high_pt = current_high_pt
-        if current_position == 1:
-            last_position = 0
-        else:
-            last_position = current_position
-    return left_boundary, right_boundary
 
 
 def _clip_to_bfe(contour, point1, point2):

@@ -384,7 +384,8 @@ class Manager(object):
         :return: list of ADPolylines
         """
         boundary = []
-        for river_reach in river_reach_list:
+        for i, river_reach in enumerate(river_reach_list):
+            print 'Processing reaching number', i+1, 'of', len(river_reach_list)+1
             b = self.run_named_reach(river_reach)
             boundary += b
         return boundary
@@ -498,50 +499,6 @@ class Manager(object):
             item.river_intersect = temp_point
             item.station = self.river.geo.project(item.river_intersect)
 
-    # def _calc_bfe_stations(self):
-    #     """
-    #     Calculates BFE.stations for bfe's along river
-    #     """
-    #     if self.river is None:
-    #         raise ValueError('self.river has not been defined yet')
-    #
-    #     for bfe in self.bfes:
-    #         temp_point = self.river.geo.intersection(bfe.geo)
-    #         if type(temp_point) is MultiPoint:
-    #             raise ShapefileError('BFE' + str(bfe.elevation) + 'crosses channel alignment multiple times.')
-    #         elif temp_point is None:
-    #             raise ShapefileError('BFE' + str(bfe.elevation) + 'does not cross channel alignment. Does ' +
-    #                                  'select_xs_bfe() need to be run?')
-    #
-    #         bfe.river_intersect = temp_point
-    #         bfe.station = self.river.geo.project(bfe.river_intersect)
-
-    # def _calc_xs_stations(self):
-    #     """
-    #     Calculates CrossSection.stations for cross section along river
-    #     """
-    #     for xs in self.cross_sections:
-    #         temp_point = self.river.geo.intersection(xs.geo)
-    #         if type(temp_point) is MultiPoint:
-    #             raise ShapefileError('Cross section' + str(xs.id) + 'crosses channel alignment multiple times.')
-    #         elif temp_point is None:
-    #             raise ShapefileError('Cross section ' + str(xs.id) + ' does not cross channel alignment.')
-    #         xs.river_intersect = temp_point
-    #         xs.station = self.river.geo.project(xs.river_intersect)
-
-    # def merge_bfe_and_xs(self):
-    #     # TODO - have import_bfes and import_cross_sections directly load self.combo_list (maybe)
-    #     """
-    #     Combines list of bfes and cross sections into one list sorted by station
-    #     """
-    #     self.combo_list = self.bfes + self.cross_sections
-
-    # def _reset_combo_list(self):
-    #     """
-    #     Resets self.combo_list to the original. Used for multiple reaches
-    #     """
-    #     self.combo_list = self.full_combo_list
-
     def _select_river(self, river_code, reach_code):
         """
         returns ADPolyline from rivers with river_code and reach_code
@@ -566,7 +523,12 @@ class Manager(object):
         self.combo_list = []
         for item in self.full_combo_list:
             if item.geo.crosses(self.river.geo):
-                self.combo_list.append(item)
+                if type(item) is logic.BFE:
+                    self.combo_list.append(item)
+                else:
+                    # Only include cross sections with extents
+                    if item.left_extent is not None and item.right_extent is not None:
+                        self.combo_list.append(item)
 
     def _sort_bfe_and_xs(self):
         self.combo_list.sort(key=lambda x: x.station)
