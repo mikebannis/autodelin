@@ -117,8 +117,7 @@ def delineate_side(bfe_cross_sections, contours, side, workers):
                 remaining_bfe_xs = bfe_cross_sections[i + 1:]
                 break
     if remaining_bfe_xs is None:
-        print 'Error finding valid BFE/cross section'
-        raise # TODO - fix me
+        raise ValueError('Unable to find valid BFE/cross section in bfe_cross_sections.')
 
     segments = []
     boundary = []
@@ -241,7 +240,7 @@ def _clip_to_bfe(contour, point1, point2):
     point2 = contour_poly.point_at_distance(contour_poly.project(point2))
     return contour_poly.clip(point1, point2)
 
-
+# TODO - next two functions are ugly and should likely be in the contour object
 def _closest_segment_by_index(line_list, point):
         """
         Returns index of line (contour) in line_list that is closest to point
@@ -291,21 +290,27 @@ def _calc_extent_position(xs, extent, other_extent, contours):
             return None
 
     if type(xs) is BFE:
-        raise ValueError('BFE passed to _calc_extent_position(). Aborting')
+        raise ValueError('BFE passed to _calc_extent_position().')
 
     high_contour = contours.get(math.ceil(xs.elevation))
     high_contour = _closest_contour_segment(high_contour, extent)
     low_contour = contours.get(math.floor(xs.elevation))
     low_contour = _closest_contour_segment(low_contour, extent)
+
     # Cross section contour intersections
     high_point = simplify(high_contour.intersection(xs.geo))
     low_point = simplify(low_contour.intersection(xs.geo))
-    if high_point is None or low_point is None:
-        return -2, None, None
+
+    # Check for no intersect and us nearest point
+    if high_point is None:
+        high_point = extent.closest_point(high_contour)
+    if low_point is None:
+        low_point = extent.closest_point(low_contour)
+    # Detect single intersection on wrong side of XS and return nearest point on contour
     if high_point.distance(other_extent) < high_point.distance(extent):
-        return -3, None, None
+        high_point = extent.closest_point(high_contour)
     if low_point.distance(other_extent) < low_point.distance(extent):
-        return -3, None, None
+        low_point = extent.closest_point(low_contour)
 
     # See if extent is between correct contours
     high_dist = high_point.distance(extent)

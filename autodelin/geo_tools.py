@@ -349,6 +349,11 @@ class ADPoint(object):
             return False
 
     def closest_point(self, polyline):
+        """
+        Returns closest point to self on polyline
+        :param polyline: ADPolyline
+        :return: ADPoint
+        """
         distance = polyline.shapely_geo.project(self.shapely_geo)
         new_pt = polyline.shapely_geo.interpolate(distance)
         return ADPoint(shapely_geo=new_pt)
