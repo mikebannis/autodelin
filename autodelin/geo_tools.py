@@ -13,6 +13,7 @@ DEBUG_zig_zag = False
 DEBUG_draw_xlines = False
 DEBUG_draw_xlines_B = False
 DEBUG_contour_loop = False
+DEBUG_draw_contour = False
 
 
 class UnknownIntersection(Exception):
@@ -477,6 +478,9 @@ def draw_line_between_contours(low_contour, high_contour, last_pos, current_pos)
             print 'contour2 points west'
         else:
             print 'contour2 points east'
+    if DEBUG_draw_contour:
+        high_contour.plot()
+        low_contour.plot()
 
     # create perpendicular (crossing) lines from contour1 to contour2
     x_lines1 = []

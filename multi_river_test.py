@@ -9,18 +9,21 @@ def main():
 
 
     # Import all values
-    mgr.workers = 2
+    mgr.workers = 0
     mgr.import_bfes('GHC/GHC_bfe.shp')
     mgr.import_xs('GHC/GHC_XS.shp')
     mgr.import_extents('GHC/all_extents.shp', '100-yr')
     mgr.import_multi_river('GHC/GHC_all_rivers.shp', 'RiverCode', 'ReachCode')
     mgr.import_contours('GHC/GHC_full_contours.shp', 'ContourEle', chatty=True)
+
     # rivers = [('South Trib', 'South Trib'), ('Mainstem', 'Carpenter'), ('Mainstem', 'Middle')]
     rivers = [('Mainstem', 'Carpenter'), ('Mainstem', 'Middle')]
-    #rivers = [('Mainstem', 'Carpenter')]
-    #rivers = [('Mainstem', 'Middle')]
-    # boundary = mgr.run_multi_reach(rivers)
-    boundary = mgr.run_all_reaches()
+    #rivers = ('Mainstem', 'Valente')
+    rivers = [('Mainstem', 'Middle'), ('Mainstem', 'Valente')]
+    boundary = mgr.run_multi_reach(rivers)
+    #boundary = mgr.run_named_reach_trim(rivers, start=5105, end=5108)
+    #boundary = mgr.run_all_reaches()
+
     print 'length results=', len(boundary)
     print boundary
 
@@ -28,7 +31,7 @@ def main():
 
 #    boundary = [x for single_result in results for x in single_result]
     mgr.export_boundary(boundary, 'out.shp')
-
+    pyplot.show()
 
 if __name__ == '__main__':
     main()

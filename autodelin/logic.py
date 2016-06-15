@@ -88,9 +88,11 @@ def delineate_side(bfe_cross_sections, contours, side, workers):
     if side == LEFT:
         end_point = 'first_point'
         extent = 'left_extent'
+        other_extent = 'right_extent'
     elif side == RIGHT:
         end_point = 'last_point'
         extent = 'right_extent'
+        other_extent = 'left_extent'
     else:
         raise ValueError('side was set to '+side+'. side must be '+LEFT+' or '+RIGHT)
 
@@ -108,7 +110,9 @@ def delineate_side(bfe_cross_sections, contours, side, workers):
             break
         else:  # cross section
             last_position, last_high_pt, last_low_pt = _calc_extent_position(last_bfe_xs,
-                                                                             getattr(last_bfe_xs, extent), contours)
+                                                                             getattr(last_bfe_xs, extent),
+                                                                             getattr(last_bfe_xs, other_extent),
+                                                                             contours)
             if last_position >= 0:
                 remaining_bfe_xs = bfe_cross_sections[i + 1:]
                 break
@@ -135,7 +139,8 @@ def delineate_side(bfe_cross_sections, contours, side, workers):
                                                                                                    end_point))
             else:  # CrossSection
                 current_position, current_high_pt, current_low_pt = \
-                    _calc_extent_position(current_bfe_xs, getattr(current_bfe_xs, extent), contours)
+                    _calc_extent_position(current_bfe_xs, getattr(current_bfe_xs, extent),
+                                          getattr(current_bfe_xs, other_extent), contours)
                 # Ignore extent if outside of contours
                 if current_position < 0:
                     print 'Bad extent, ignoring.'
@@ -266,7 +271,7 @@ def _closest_contour_segment(contour, point):
     return contour.line_list[i]
 
 
-def _calc_extent_position(xs, extent, contours):
+def _calc_extent_position(xs, extent, other_extent, contours):
     """
     Calculates the desired position of the floodplain boundary between the lower and higher contour as a value
      between 0.0 and 1.0.  If the cross section extent is outside the appropriate contours it will be -1
@@ -297,6 +302,10 @@ def _calc_extent_position(xs, extent, contours):
     low_point = simplify(low_contour.intersection(xs.geo))
     if high_point is None or low_point is None:
         return -2, None, None
+    if high_point.distance(other_extent) < high_point.distance(extent):
+        return -3, None, None
+    if low_point.distance(other_extent) < low_point.distance(extent):
+        return -3, None, None
 
     # See if extent is between correct contours
     high_dist = high_point.distance(extent)

@@ -201,8 +201,6 @@ class Manager(object):
         # Initialized in methods
         self.river = None           # River object - used with single reach
         self.rivers = None          # Rivers object - used with multiple reaches
-        #self.cross_sections = None  # list of CrossSection objects
-        #self.bfes = None            # list of logic.BFE objects
         self.contours = None        # Contours object
         self.crs = None             # fiona.crs object, from contours
         self.combo_list = None      # partial list of CrossSection and logic.BFE objects for the current reach
@@ -385,7 +383,7 @@ class Manager(object):
         """
         boundary = []
         for i, river_reach in enumerate(river_reach_list):
-            print 'Processing reaching number', i+1, 'of', len(river_reach_list)+1
+            print '################ Processing reaching number', i+1, 'of', len(river_reach_list)+1
             b = self.run_named_reach(river_reach)
             boundary += b
         return boundary
@@ -408,12 +406,36 @@ class Manager(object):
 #        self._reset_combo_list()
         return bound
 
+    def run_named_reach_trim(self, river_reach, start=None, end=None):
+        """
+        Delineates river/reach in river_reach. Returns boundary
+        Trims XS/BFE by elevations start and end
+        :param river_reach: tuple: (river, reach)
+        :return: list of ADPolyline boundaries
+        """
+        river, reach = river_reach
+        self._select_river(river, reach)
+        # self.merge_bfe_and_xs()
+        self._select_bfe_xs()
+        self._calc_stations()
+        self._sort_bfe_and_xs()
+        print 'len combolist', len(self.combo_list)
+        self.trim_bfe_xs(start=start, end=end)
+        print 'len combolist', len(self.combo_list)
+        print '============= Delineating reach:', river_reach
+        bound = self.run_single_reach()
+        print '============= Finished delineating:', river_reach
+        return bound
+
     def run_single_reach(self):
         """
         Delinate single reach. Assumed all features in shapefiles belong to the same reach or have been properly
         selected.
         :return: list of Adpolyine boundaries
         """
+        if len(self.combo_list) < 2:
+            raise ValueError('self.combo_list has less than two elements. Unable to delineate.')
+
         boundary = logic.delineate(self.combo_list, self.contours, workers=self.workers)
         return boundary
 
@@ -457,14 +479,18 @@ class Manager(object):
     def trim_bfe_xs(self, start=None, end=None):
         """
         Removes BFE/cross sections that are not in between start and end
+        This must be run after _select_bfe_xs() and before run_single_reach()
         :param bfe_xs_list:
-        :param start: highest elevation bfe/cross section to use
-        :param end: lowest elevation bfe to use
+        :param start: lowest elevation bfe/cross section to use
+        :param end: highest elevation bfe to use
         """
         # Check for proper order
         if self.combo_list[0].elevation > self.combo_list[-1].elevation:
             # print 'BFE/cross section list appears to be in reverse order. Reversing.'
             self.combo_list = self.combo_list[::-1]
+
+        # if start > end:
+        #     end, start = start, end
 
         new_bfe_xs_list = []
         flag = 'out'
@@ -479,6 +505,9 @@ class Manager(object):
                 break
                 # print 'bfe_xs.name=', bfe_xs.name,'start=', start,'end=', end
         self.combo_list = new_bfe_xs_list
+        if len(self.combo_list) < 2:
+            raise ValueError('self.combo_list has less than two elements.' +
+                         ' start and end appear invalid. Are they switched?.')
 
     def _calc_stations(self):
         # TODO - this appears to be redundant to _calc_bfe_stations and _calc_xs_stations
