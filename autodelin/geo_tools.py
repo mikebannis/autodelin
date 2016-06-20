@@ -11,9 +11,9 @@ DEBUG_same_as = False
 DEBUG_x_line_dist = False
 DEBUG_zig_zag = False
 DEBUG_draw_xlines = False
-DEBUG_draw_xlines_B = False
+DEBUG_draw_xlines_B = True
 DEBUG_contour_loop = False
-DEBUG_draw_contour = False
+DEBUG_draw_contour = True
 
 
 class UnknownIntersection(Exception):
