@@ -18,7 +18,7 @@ class ShapefileError (Exception):
 class Contours(object):
     """
     Holds a dictionary of fiona features (contours) by elevaiton. get() converts feature to Contour. Doing this on-
-    the-fly is less memory intensive and faster to load, but slower to delineate. Includes caching with cache aging
+    the-fly is less memory intensive and faster to load, but slower to segment. Includes caching with cache aging
     """
     def __init__(self, cache_age=4):
         # dictionary of either Contour or fiona feature objects keyed by elevation
@@ -108,6 +108,30 @@ class Contour(object):
     def plot(self, *args, **kwargs):
         for line in self.line_list:
             line.plot(*args, **kwargs)
+
+    def closest_segment_by_index(self, point):
+        """
+        Returns index of line (contour) in line_list that is closest to point
+        :param point: ADPoint
+        :return: int
+        """
+        index = 0
+        current_dist = self.line_list[index].distance_to(point)
+        for i in range(1, len(self.line_list)):
+            dist = self.line_list[i].distance_to(point)
+            if dist < current_dist:
+                current_dist = dist
+                index = i
+        return index
+
+    def closest_contour_segment(self, point):
+        """
+        Returns ADPolyline segment of contour closest to point
+        :param point: ADPoint object
+        :return: ADPolyline object
+        """
+        i = self.closest_segment_by_index(point)
+        return self.line_list[i]
 
     def __str__(self):
         s = '['
@@ -383,7 +407,7 @@ class Manager(object):
         """
         boundary = []
         for i, river_reach in enumerate(river_reach_list):
-            print '################ Processing reaching number', i+1, 'of', len(river_reach_list)+1
+            print '################ Processing reach number', i+1, 'of', len(river_reach_list)
             b = self.run_named_reach(river_reach)
             boundary += b
         return boundary
@@ -434,9 +458,9 @@ class Manager(object):
         :return: list of Adpolyine boundaries
         """
         if len(self.combo_list) < 2:
-            raise ValueError('self.combo_list has less than two elements. Unable to delineate.')
+            raise ValueError('self.combo_list has less than two elements. Unable to segment.')
 
-        boundary = logic.delineate(self.combo_list, self.contours, workers=self.workers)
+        boundary = logic.create_segments(self.combo_list, self.contours, workers=self.workers)
         return boundary
 
     # def run_multi_reach_smp(self, river_reach, workers=4):

@@ -19,10 +19,10 @@ def main():
     # rivers = [('South Trib', 'South Trib'), ('Mainstem', 'Carpenter'), ('Mainstem', 'Middle')]
     rivers = ('Mainstem', 'Carpenter')
     #rivers = ('Mainstem', 'Valente')
-    #rivers = [('Mainstem', 'Middle')]
-    #boundary = mgr.run_multi_reach(rivers)
+    rivers = [('Mainstem', 'Middle')]
+    boundary = mgr.run_multi_reach(rivers)
     #boundary = mgr.run_named_reach_trim(rivers, start=5126, end=5127)
-    boundary = mgr.run_named_reach(rivers)
+    #boundary = mgr.run_named_reach(rivers)
     #boundary = mgr.run_all_reaches()
 
     print 'length results=', len(boundary)

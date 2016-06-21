@@ -54,7 +54,7 @@ class BFE(object):
         return str(self)
 
 
-def delineate(bfe_cross_sections, contours, workers=0):
+def create_segments(bfe_cross_sections, contours, workers=0):
     # TODO - fill out doc string
     """
 
@@ -68,12 +68,12 @@ def delineate(bfe_cross_sections, contours, workers=0):
         print 'BFE/cross section list appears to be in reverse order. Reversing.'
         bfe_cross_sections = bfe_cross_sections[::-1]
 
-    l_bound = delineate_side(bfe_cross_sections, contours, LEFT, workers)
-    r_bound = delineate_side(bfe_cross_sections, contours, RIGHT, workers)
+    l_bound = segment_side(bfe_cross_sections, contours, LEFT, workers)
+    r_bound = segment_side(bfe_cross_sections, contours, RIGHT, workers)
     return l_bound + r_bound
 
 
-def delineate_side(bfe_cross_sections, contours, side, workers):
+def segment_side(bfe_cross_sections, contours, side, workers):
     # TODO - fill out doc string
     """
 
@@ -94,7 +94,7 @@ def delineate_side(bfe_cross_sections, contours, side, workers):
         extent = 'right_extent'
         other_extent = 'left_extent'
     else:
-        raise ValueError('side was set to '+side+'. side must be '+LEFT+' or '+RIGHT)
+        raise ValueError('side was set to ' + side + '. side must be ' + LEFT + ' or ' + RIGHT)
 
     print '******** Working on', side, 'side'
 
@@ -109,10 +109,9 @@ def delineate_side(bfe_cross_sections, contours, side, workers):
             remaining_bfe_xs = bfe_cross_sections[i + 1:]
             break
         else:  # cross section
-            last_position, last_high_pt, last_low_pt = _calc_extent_position(last_bfe_xs,
-                                                                             getattr(last_bfe_xs, extent),
-                                                                             getattr(last_bfe_xs, other_extent),
-                                                                             contours)
+            last_position, last_high_pt, last_low_pt = \
+                _calc_extent_position(last_bfe_xs, getattr(last_bfe_xs, extent), getattr(last_bfe_xs, other_extent),
+                                      contours)
             if last_position >= 0:
                 remaining_bfe_xs = bfe_cross_sections[i + 1:]
                 break
@@ -127,13 +126,14 @@ def delineate_side(bfe_cross_sections, contours, side, workers):
         try:
             orig_low_contour = contours.get(math.floor(last_bfe_xs.elevation))
             orig_high_contour = contours.get(math.ceil(current_bfe_xs.elevation))
+
             # Calculate current high and low points for clipping contours
             if type(current_bfe_xs) is BFE:
                 # current_high_pt is last vertex on BFE
                 current_position = 1
                 current_high_pt = getattr(current_bfe_xs, end_point)
                 # current_low_pt is found by intersecting current BFE w/ low contour
-                temp_low_contour = _closest_contour_segment(orig_low_contour, getattr(current_bfe_xs, end_point))
+                temp_low_contour = orig_low_contour.closest_contour_segment(getattr(current_bfe_xs, end_point))
                 current_low_pt = current_bfe_xs.geo.nearest_intersection(temp_low_contour, getattr(current_bfe_xs,
                                                                                                    end_point))
             else:  # CrossSection
@@ -174,8 +174,8 @@ def delineate_side(bfe_cross_sections, contours, side, workers):
             print 'Contour not found'
         except gt.UnknownIntersection:
             print 'Contour doesn\'t intersect BFE/cross section'
-        except Exception as e:
-            print 'Unknown exception:', str(e)
+        # except Exception as e:
+        #     print 'Unknown exception:', str(e)
 
         # Reset for next BFE/XS
         last_bfe_xs = current_bfe_xs
@@ -207,7 +207,7 @@ def delineate_side(bfe_cross_sections, contours, side, workers):
         print 'Delineating', len(segments), 'segments with', workers, 'sub processes.'
         boundary = list(pool.map(segment.run_seg, segments))
     time = datetime.datetime.now() - now
-    print 'Completed', len(segments), 'in', time, '.', (time/len(segments)), 'per segment.'
+    print 'Completed', len(segments), 'in', time, '.', (time / len(segments)), 'per segment.'
 
     for x in boundary:
         x.status = 'testing'
@@ -217,15 +217,15 @@ def delineate_side(bfe_cross_sections, contours, side, workers):
 def _clip_to_bfe(contour, point1, point2):
     """
     returns segment of contour between points on line nearest point1 and point2
-    :param contour: list of ADPolyline objects
+    :param contour: Contour object
     :param point1: ADPoint
     :param point2: ADPoint
     :return: ADPolyline
     """
     if contour.multipart:
         # Find segment nearest to both points
-        index1 = _closest_segment_by_index(contour.line_list, point1)
-        index2 = _closest_segment_by_index(contour.line_list, point2)
+        index1 = contour.closest_segment_by_index(point1)
+        index2 = contour.closest_segment_by_index(point2)
         # If not on same segment raise ComplexContourError
         if index1 != index2:
             raise ComplexContourError
@@ -240,34 +240,35 @@ def _clip_to_bfe(contour, point1, point2):
     point2 = contour_poly.point_at_distance(contour_poly.project(point2))
     return contour_poly.clip(point1, point2)
 
-# TODO - next two functions are ugly and should likely be in the contour object
-def _closest_segment_by_index(line_list, point):
-        """
-        Returns index of line (contour) in line_list that is closest to point
-        :param line_list: list of ADPolylines
-        :param point: ADPoint
-        :return: int
-        """
-        index = 0
-        #print ' in closest_segment-', type(point)
-        current_dist = line_list[0].distance_to(point)
-        for i in range(1, len(line_list)):
-            dist = line_list[i].distance_to(point)
-            if dist < current_dist:
-                current_dist = dist
-                index = i
-        return index
 
+def _clip_complex(complex_contour, point1, point2):
+    """
+    Clip complex contour by proximity to the opposite point. Returns
+    two ADPolylines, the contour fragment closest to point1, followed by the fragment closest to point 2
+    :param complex_contour: Contour object
+    :param point1: ADPoint - point on complex_contour
+    :param point2: ADPoint - point on complex_contour
+    :return: ADPolyline, ADPolyline
+    """
+    # TODO - this is likely easily fooled by curved and "odd" contours. Update to clip by location on simple contour
+    # closest to both complex segments
 
-def _closest_contour_segment(contour, point):
-    """
-    Returns ADPolyline segment of contour closest to point
-    :param contour: Contour object
-    :param point: ADPoint object
-    :return: ADPolyline object
-    """
-    i = _closest_segment_by_index(contour.line_list, point)
-    return contour.line_list[i]
+    if not complex_contour.multipart:
+        raise ValueError('complex_contour is not multipart')
+
+    # Find segments nearest to both points
+    contour_poly1 = complex_contour.closest_segment_by_segment(point1)
+    contour_poly2 = complex_contour.closest_segment_by_segment(point2)
+
+    # Find points to clip first segment
+    point_A = contour_poly1.point_at_distance(contour_poly1.project(point1))
+    point_B = contour_poly1.point_at_distance(contour_poly1.project(point2))
+
+    # Find points to clip second segment
+    point_C = contour_poly2.point_at_distance(contour_poly2.project(point1))
+    point_D = contour_poly2.point_at_distance(contour_poly2.project(point2))
+
+    return contour_poly1.clip(point_A, point_B), contour_poly2.clip(point_C, point_D)
 
 
 def _calc_extent_position(xs, extent, other_extent, contours):
@@ -279,6 +280,7 @@ def _calc_extent_position(xs, extent, other_extent, contours):
     :param contours: contour list
     :return: float, -1 if outside contours, -2 if other error, high point and low point
     """
+
     def simplify(points):
         """ reduces list of ADPoints to the point closest to extent """
         if type(points) is gt.ADPoint:
@@ -293,9 +295,9 @@ def _calc_extent_position(xs, extent, other_extent, contours):
         raise ValueError('BFE passed to _calc_extent_position().')
 
     high_contour = contours.get(math.ceil(xs.elevation))
-    high_contour = _closest_contour_segment(high_contour, extent)
+    high_contour = high_contour.closest_contour_segment(extent)
     low_contour = contours.get(math.floor(xs.elevation))
-    low_contour = _closest_contour_segment(low_contour, extent)
+    low_contour = low_contour.closest_contour_segment(extent)
 
     # Cross section contour intersections
     high_point = simplify(high_contour.intersection(xs.geo))
@@ -320,7 +322,7 @@ def _calc_extent_position(xs, extent, other_extent, contours):
         # outside contours
         return -1, None, None
     # Return position
-    return low_dist/contour_dist, high_point, low_point
+    return low_dist / contour_dist, high_point, low_point
 
 
 def _contour_crosses_boundary(boundary, contour1, contour2):

@@ -85,7 +85,7 @@ def main():
     now = dt.now()
     combo_list = trim_bfe_xs(combo_list, start=5140, end=5156)
     # combo_list = trim_bfe_xs(combo_list, start=114934, end=5150)
-    left_bound, right_bound = ad.delineate(combo_list, contours)
+    left_bound, right_bound = ad.segment(combo_list, contours)
     time = dt.now() - now
     print 'done in', time
     print len(combo_list), 'BFE/XS completed in ', (time/len(combo_list)), 'per item'

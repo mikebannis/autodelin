@@ -3,7 +3,7 @@ import geo_tools as gt
 
 class Segment(object):
     """
-    Stores information required to delineate a segment of floodplain between two contours. This is used for SMP.
+    Stores information required to segment a segment of floodplain between two contours. This is used for SMP.
     """
     def __init__(self, low_contour, high_contour, last_pos, current_pos):
         self.low_contour = low_contour
