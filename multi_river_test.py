@@ -17,16 +17,16 @@ def main():
     mgr.import_contours('GHC/GHC_full_contours.shp', 'ContourEle', chatty=True)
 
     # rivers = [('South Trib', 'South Trib'), ('Mainstem', 'Carpenter'), ('Mainstem', 'Middle')]
+    rivers = [('Mainstem', 'Carpenter')]
     rivers = ('Mainstem', 'Carpenter')
     #rivers = ('Mainstem', 'Valente')
-    rivers = [('Mainstem', 'Middle')]
-    boundary = mgr.run_multi_reach(rivers)
-    #boundary = mgr.run_named_reach_trim(rivers, start=5126, end=5127)
+    #rivers = [('Mainstem', 'Middle')]
+    #boundary = mgr.run_multi_reach(rivers)
+    boundary = mgr.run_named_reach_trim(rivers, start=5128, end=5130)
     #boundary = mgr.run_named_reach(rivers)
     #boundary = mgr.run_all_reaches()
 
     print 'length results=', len(boundary)
-    print boundary
 
     print 'Imports and delineation in ', (dt.now() - first_now)
 

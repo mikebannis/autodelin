@@ -23,7 +23,7 @@ class UnknownIntersection(Exception):
 class NoIntersection(Exception):
     pass
 
-
+# TODO - sort methods alphabetically
 class ADPolyline(object):
     def __init__(self, shapely_geo=None, vertices=None, use_arcpy=False, use_shapely=False):
         """

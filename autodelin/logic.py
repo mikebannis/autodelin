@@ -8,9 +8,11 @@ import datetime
 DEBUG1 = gt.DEBUG1
 DEBUG2 = gt.DEBUG2
 NEW_DEBUG = False
+DEBUG_COMPLEX_CONTOUR = True
 
 LEFT = 'left'
 RIGHT = 'right'
+TOLERANCE = 0.001
 
 
 class ContourNotFound(Exception):
@@ -55,33 +57,31 @@ class BFE(object):
 
 
 def create_segments(bfe_cross_sections, contours, workers=0):
-    # TODO - fill out doc string
     """
-
-    :param bfe_cross_sections:
-    :param contours:
+    Runs segment side for both right and left sides.
+    :param bfe_cross_sections: list of BFE and Cross Section objects
+    :param contours: Contours object
     :param workers: no SMP if 0, uses smp with workers workers if non zero
-    :return:
+    :return: list of ADPolyline
     """
     # Check for proper order
     if bfe_cross_sections[0].elevation > bfe_cross_sections[-1].elevation:
         print 'BFE/cross section list appears to be in reverse order. Reversing.'
         bfe_cross_sections = bfe_cross_sections[::-1]
 
-    l_bound = segment_side(bfe_cross_sections, contours, LEFT, workers)
+    #l_bound = segment_side(bfe_cross_sections, contours, LEFT, workers)
     r_bound = segment_side(bfe_cross_sections, contours, RIGHT, workers)
     return l_bound + r_bound
 
 
 def segment_side(bfe_cross_sections, contours, side, workers):
-    # TODO - fill out doc string
     """
-
-    :param bfe_cross_sections:
-    :param contours:
+    Delineates floodplain and returns boundary
+    :param bfe_cross_sections: list of BFE and CrossSection objects
+    :param contours: Contours object
     :param side: string: LEFT or RIGHT
-    :param workers:
-    :return:
+    :param workers: no SMP if 0, uses smp with workers workers if non zero
+    :return: list of ADPolyline
     """
     # TODO - make this whole thing an object
     # Set attribute names for LEFT vs RIGHT
@@ -147,12 +147,8 @@ def segment_side(bfe_cross_sections, contours, side, workers):
 
             # print 'last low pt',type(last_low_pt), last_low_pt, 'current_low_pt', type(current_low_pt), current_low_pt
             # trim contours between current and last BFE/XS
-            low_contour = _clip_to_bfe(orig_low_contour, last_low_pt, current_low_pt)
-            high_contour = _clip_to_bfe(orig_high_contour, last_high_pt, current_high_pt)
-
-            # force contours to point upstream
-            _orient_contours(last_low_pt, low_contour)
-            _orient_contours(last_high_pt, high_contour)
+            low_contour = _clip_complex(orig_low_contour, last_low_pt, current_low_pt)
+            high_contour = _clip_complex(orig_high_contour, last_high_pt, current_high_pt)
 
             if NEW_DEBUG:
                 low_contour.plot(color='black', linewidth=2)
@@ -162,11 +158,42 @@ def segment_side(bfe_cross_sections, contours, side, workers):
                 high_contour.first_point.plot(marker='o')
                 high_contour.last_point.plot(marker='o')
 
-            # Create segment and add to list
-            temp_seg = segment.Segment(low_contour, high_contour, last_position, current_position)
-            temp_seg.current_feature = current_bfe_xs
-            temp_seg.last_feature = last_bfe_xs
-            segments.append(temp_seg)
+            # print 'lens', len(low_contour), len(high_contour), low_contour, high_contour
+            if type(low_contour) is gt.ADPolyline and type(high_contour) is gt.ADPolyline:
+                # force contours to point upstream
+                _orient_contours(last_low_pt, low_contour)
+                _orient_contours(last_high_pt, high_contour)
+
+                temp_seg = segment.Segment(low_contour, high_contour, last_position, current_position)
+                temp_seg.current_feature = current_bfe_xs
+                temp_seg.last_feature = last_bfe_xs
+                segments.append(temp_seg)
+            elif type(low_contour) is tuple and type(high_contour) is gt.ADPolyline:
+                print ' &&&&&&&&&&&&&& Got a complex one'
+                low_contour1 = low_contour[0]
+                low_contour2 = low_contour[1]
+
+                # force contours to point upstream
+                _orient_contours(last_high_pt, high_contour)
+                _orient_contours(last_low_pt, low_contour1)
+                _orient_contours(last_low_pt, low_contour2)
+
+                if DEBUG_COMPLEX_CONTOUR:
+                    high_contour.plot()
+                    low_contour1.plot()
+                    low_contour2.plot()
+                    pyplot.show()
+
+                # Calculate position in middle. This may need to be upgraded
+                middle_position = last_position + (current_position - last_position)*low_contour1.length / \
+                                                  (low_contour1.length + low_contour2.length)
+                print last_position, middle_position, current_position
+                temp_seg1 = segment.Segment(low_contour1, high_contour, last_position, middle_position)
+                temp_seg2 = segment.Segment(low_contour2, high_contour, middle_position, current_position)
+                segments.append(temp_seg1)
+                segments.append(temp_seg2)
+            else:
+                print 'Unhandled funky contour'
 
         except ComplexContourError:
             print 'Funky contour - skipping'
@@ -182,7 +209,7 @@ def segment_side(bfe_cross_sections, contours, side, workers):
         if type(last_bfe_xs) is BFE:
             # BFE, last high is new low
             last_low_pt = current_high_pt
-            # Hack, should extend BFE or intersect XS
+            # TODO - Hack, should extend BFE or intersect XS
             last_high_pt = current_high_pt
         else:  # Cross section
             last_low_pt = current_low_pt
@@ -245,20 +272,27 @@ def _clip_complex(complex_contour, point1, point2):
     """
     Clip complex contour by proximity to the opposite point. Returns
     two ADPolylines, the contour fragment closest to point1, followed by the fragment closest to point 2
+    If simple contour: returns _clip_to_bfe()
     :param complex_contour: Contour object
     :param point1: ADPoint - point on complex_contour
     :param point2: ADPoint - point on complex_contour
-    :return: ADPolyline, ADPolyline
+    :return: ADPolyline or (ADPolyline, ADPolyline)
     """
     # TODO - this is likely easily fooled by curved and "odd" contours. Update to clip by location on simple contour
     # closest to both complex segments
 
     if not complex_contour.multipart:
-        raise ValueError('complex_contour is not multipart')
+        return _clip_to_bfe(complex_contour, point1, point2)
+    # Find segment nearest to both points
+    index1 = complex_contour.closest_segment_by_index(point1)
+    index2 = complex_contour.closest_segment_by_index(point2)
+    # if index is the same use the simple function
+    if index1 == index2:
+        return _clip_to_bfe(complex_contour, point1, point2)
 
     # Find segments nearest to both points
-    contour_poly1 = complex_contour.closest_segment_by_segment(point1)
-    contour_poly2 = complex_contour.closest_segment_by_segment(point2)
+    contour_poly1 = complex_contour.closest_contour_segment(point1)
+    contour_poly2 = complex_contour.closest_contour_segment(point2)
 
     # Find points to clip first segment
     point_A = contour_poly1.point_at_distance(contour_poly1.project(point1))

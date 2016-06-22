@@ -17,7 +17,7 @@ class ShapefileError (Exception):
 
 class Contours(object):
     """
-    Holds a dictionary of fiona features (contours) by elevaiton. get() converts feature to Contour. Doing this on-
+    Holds a dictionary of fiona features (contours) by elevation. get() converts feature to Contour. Doing this on-
     the-fly is less memory intensive and faster to load, but slower to segment. Includes caching with cache aging
     """
     def __init__(self, cache_age=4):
@@ -132,6 +132,68 @@ class Contour(object):
         """
         i = self.closest_segment_by_index(point)
         return self.line_list[i]
+
+    def best_contour_segment(self, current_bfe_xs, last_bfe_xs, side):
+        """
+
+        :param bfe_xs:
+        :param point1:
+        :param point2:
+        :return:
+        """
+        current_ints = self._intersections_by_index(current_bfe_xs)
+        last_ints = self._intersections_by_index(last_bfe_xs)
+        common_ints = list(set(current_ints).intersection(last_ints))
+        if common_ints == []:
+            # There are no common intersections, do something
+
+        # Find intersection closest to side
+
+
+    def _intersections_by_index(self, bfe_xs):
+        """
+        returns list of contour parts (by index) that intersect bfe_xs
+        :param bfe_xs: BFE or CrossSection object to intersect
+        :return: list of ints
+        """
+        intersections = []
+
+        # Intersect all contour pieces with bfe_xs
+        for i, geo in enumerate(self.line_list):
+            intersect = geo.intersection(bfe_xs.geo)
+            if intersect is None:
+                continue
+            else:
+                intersections.append(i)
+
+        return intersections
+
+        # intersections = []
+        #
+        # # Intersect all contour pieces with bfe_xs
+        # for i, geo in enumerate(self.line_list):
+        #     intersect = geo.intersection(bfe_xs.geo)
+        #     if intersect is None:
+        #         continue
+        #     elif type(intersect) is gt.ADPoint:
+        #         intersect.index = i
+        #         intersections.append(intersect)
+        #     elif type(intersect) is list:
+        #         for point in intersect:
+        #             point.index = i
+        #             intersections.append(point)
+        #     else:
+        #         raise logic.ComplexContourError('Contour may overlap bfe/xs' + str(bfe_xs.name))
+        #
+        # # Calculate intersect position along bfe_xs
+        # assert bfe_xs.distance_to(ref_point) < TOLERANCE
+        # point_pos = bfe_xs.geo.project(ref_point)
+        # for intersect in intersections:
+        #     position = bfe_xs.distance_to(intersect)
+        #     intersect.position = abs(position - point_pos)
+        # intersections.sort(key=lambda x: x.position)
+        #
+        # return intersections[0].index
 
     def __str__(self):
         s = '['
