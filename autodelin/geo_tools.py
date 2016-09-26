@@ -1,6 +1,7 @@
 from shapely.geometry import LineString, Point, MultiPoint, GeometryCollection
 from matplotlib import pyplot
 import copy
+from math import atan2
 
 PRECISION = 5
 
@@ -34,6 +35,11 @@ class ADPolyline(object):
         :param use_shapely: default
         :return: None
         """
+        self.vertices = []  # list of ADPoint objects
+        self.shapely_geo = None  # shapely LineString object
+        self.first_point = None  # ADPoint - first vertex of line
+        self.last_point = None  # ADPoint - last vertex of line
+
         if vertices is not None and shapely_geo is None:
             # vertices supplied, create geo
             # assume vertices are all ADPoint
@@ -90,6 +96,38 @@ class ADPolyline(object):
         for vertex in self.vertices:
             s += str(vertex) + ', '
         return s[:-2]
+
+    def bracket(self, point):
+        """
+        Returns two vertices from self.geo that are immediately before, and after, projected location of "point"
+        :param point: ADPoint
+        :return: (ADPoint, ADPoint) (vertex before point, vertex after point)
+        """
+        point1 = None  # Vertex immediately before point
+        point2 = None  # Vertex immediately after point
+
+        pt_dist = self.project(point)
+        point1 = self.vertices[0]
+
+        vertex_iter = iter(self.vertices[1:])
+        for test_pt in vertex_iter:
+            test_dist = pt_dist - self.project(test_pt)
+            if test_dist > 0:
+                # Before point
+                point1 = test_pt
+            else:
+                # At or after point
+                if test_pt.is_same_as(point):
+                    # At point is on a line vertex, jump ahead one more
+                    try:
+                        point2 = vertex_iter.next()
+                    except StopIteration:
+                        # At the end of a line
+                        point2 = test_pt
+                else:
+                    point2 = test_pt
+                break
+        return point1, point2
 
     def crosses(self, line):
         return self.shapely_geo.crosses(line.shapely_geo)
@@ -172,6 +210,7 @@ class ADPolyline(object):
             # Returned polyline or something weird. Maybe raise an exception here?
             return 0
 
+    # TODO: combine with self.interpolate()
     def point_at_distance(self, distance, normalize=False):
         new_pt = self.shapely_geo.interpolate(distance, normalized=normalize)
         return ADPoint(shapely_geo=new_pt)
@@ -299,6 +338,10 @@ class ADPolyline(object):
 
 class ADPoint(object):
     def __init__(self, X=None, Y=None, shapely_geo=None):
+        self.X = None
+        self.Y = None
+        self.shapely_geo = None
+
         if X is not None and Y is not None and shapely_geo is None:
             # X and Y supplied, create geo
             self.X = X
@@ -326,6 +369,16 @@ class ADPoint(object):
 
     def __str__(self):
         return '(' + str(self.X) + ', ' + str(self.Y) + ')'
+
+    def angle(self, point):
+        """
+        Returns angle to point in radians (0 is due east/right)
+        :param point: ADPoint
+        :return: float (radians)
+        """
+        x = point.X - self.X
+        y = point.Y - self.Y
+        return atan2(y, x)
 
     def distance(self, point):
         if not isinstance(point, ADPoint):
