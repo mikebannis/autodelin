@@ -27,10 +27,13 @@ def main():
             geo = shape(feature['geometry'])
             right_line = gt.ADPolyline(shapely_geo=geo)
 
+    start_pts = []
     with fiona.collection(start_filename) as input_file:
         for feature in input_file:
             geo = shape(feature['geometry'])
             start_pt = gt.ADPoint(shapely_geo=geo)
+            print str(start_pt)
+            start_pts.append(start_pt)
 
     with fiona.collection(test1_filename) as input_file:
         for feature in input_file:
@@ -57,7 +60,6 @@ def main():
     #r_intersect.plot(marker='o')
     #l_intersect.plot(marker='o')
     # test1_line.plot(color='black')
-    start_pt.plot(marker='o')
    # test = al.perpendicular_line(start_pt, right_line, 2000, direction='right')
    # test2 = al.perpendicular_line(start_pt, right_line, 2000, direction='left')
    # test.plot()
@@ -66,7 +68,11 @@ def main():
 
     #theta_l, theta_r = al.intersect_angles(left_line, right_line, test1_line)
     #print degrees(theta_l), degrees(theta_r)
-    al.optimized_x_line(left_line, right_line, start_pt, 1000)
+    print 'start_pts is this many', len(start_pts)
+    for start_pt in start_pts:
+        al.optimized_x_line(left_line, right_line, start_pt, 1000)
+        start_pt.plot(marker='o')
+
     pyplot.axes().set_aspect('equal', 'datalim')
     pyplot.show()
 

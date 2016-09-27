@@ -60,6 +60,21 @@ def optimized_x_line(left_line, right_line, start_pt, length, spread=0.75*pi, in
     # iterate until line is optimized
 
 
+def rate_line(left_line, right_line, test_line):
+    """
+    
+    :param left_line:
+    :param right_line:
+    :param test_line:
+    :return:
+    """
+    try:
+        a, b = intersect_angles(left_line, right_line, test_line)
+    except NoIntersect:
+        return 999
+    return a - b
+
+
 
 # TODO: If start_pt is a vertex, don't use the bracketing vertices, use the angles of the segments adjacent to the
 # start_pt
@@ -116,10 +131,11 @@ def line_at_angle(start_pt, angle, length):
 def intersect_angles(left_line, right_line, x_line):
     """
     Returns the interior, "downstream", angles formed by left_line/x_line and right_line/x_line
+    Raises NoIntersect if a line doesn't cross
     :param left_line: ADPolyline - river left contour
     :param right_line:  ADPolyline - river right contour
     :param x_line: ADPolyline - line crossing both contours
-    :return:  (float, float) - left angle (radians), rigth angle (radians)
+    :return:  (float, float) - left angle (radians), right angle (radians)
     """
     def positive(angle):
         if angle < 0.0:
@@ -127,12 +143,11 @@ def intersect_angles(left_line, right_line, x_line):
         else:
             return angle
 
-    # TODO: add detection for lines not crossing (or should that be else where?)
     left_inter_pt = left_line.intersection(x_line)
-    if left_inter_pt == None:
+    if left_inter_pt is None:
         raise NoIntersect('left_line does not intersect x_line')
     right_inter_pt = right_line.intersection(x_line)
-    if right_inter_pt == None:
+    if right_inter_pt is None:
         raise NoIntersect('right_line does not intersect x_line')
 
     _, left_br_point = left_line.bracket(left_inter_pt)
