@@ -1,6 +1,6 @@
 from numpy import arange
 import geo_tools
-from math import pi, radians, cos, sin
+from math import pi, radians, cos, sin, degrees
 
 tolerance = 0.001  # tolerance for determining if points are on line
 
@@ -32,7 +32,8 @@ def optimized_x_line(left_line, right_line, start_pt, length, spread=0.75*pi, in
     if side == 'left':
         perp_line, perp_angle = perpendicular_line(start_pt, left_line, length, direction='right', return_angle=True)
     else:
-        perp_line, perp_angle = perpendicular_line(start_pt, right_line, length, direction='left', return_angle=True)
+        perp_line, perp_angle = perpendicular_line(start_pt, right_line, length, direction='left', return_angle=True,
+                                                   back_length=1)
 
     # Ensure initial tests is odd
     if initial_tests % 2 == 0:
@@ -45,16 +46,19 @@ def optimized_x_line(left_line, right_line, start_pt, length, spread=0.75*pi, in
     test_lines = []
     # Create lines clockwise of perp line
     for angle in arange(start, perp_angle, angle_step):
-        temp_line = line_at_angle(start_pt, angle, length)
+        temp_line = line_at_angle(start_pt, angle, length, back_length=1)
         test_lines.append(temp_line)
     # Add perp line
     test_lines.append(perp_line)
     # Create lines CCW of perp_line
     for angle in arange(perp_angle+angle_step, end, angle_step):
-        temp_line = line_at_angle(start_pt, angle, length)
+        temp_line = line_at_angle(start_pt, angle, length, back_length=1)
         test_lines.append(temp_line)
 
-    for line in test_lines:
+    for i, line in enumerate(test_lines):
+        print 'test line:', i
+        score = rate_line(left_line, right_line, line)
+        line.label(text=str(i)+'/'+str(round(degrees(score), 0)), reverse=True)
         line.plot()
 
     # iterate until line is optimized
@@ -70,15 +74,16 @@ def rate_line(left_line, right_line, test_line):
     """
     try:
         a, b = intersect_angles(left_line, right_line, test_line)
-    except NoIntersect:
-        return 999
+        print degrees(a), degrees(b)
+    except NoIntersect as e:
+        print 'no intersect', e
+        return radians(999)
     return a - b
-
 
 
 # TODO: If start_pt is a vertex, don't use the bracketing vertices, use the angles of the segments adjacent to the
 # start_pt
-def perpendicular_line(start_pt, orig_line, length, direction='right', return_angle=False):
+def perpendicular_line(start_pt, orig_line, length, direction='right', return_angle=False, back_length=0):
     """
     Returns a line starting at start_pt, perpendicular to 'line' at segment intersected by start_pt. If start_pt is
     at a vertex of orig_line, the angle between the vertices before and after start_pt is used to create the
@@ -88,6 +93,7 @@ def perpendicular_line(start_pt, orig_line, length, direction='right', return_an
     :param length:  length of new line
     :param direction: 'right' or 'left', direction perp line is drawn from orig, facing towards the end of orig_line
     :param return_angle:  bool - True, returns angle after ADPolyline
+    :param back_length: float, passed to line_at_angle()
     :return: ADPolyline, (angle) - perpendicular line, (angle of line (radians))
     """
     direction = direction.lower()
@@ -106,24 +112,27 @@ def perpendicular_line(start_pt, orig_line, length, direction='right', return_an
         angle += radians(90)
 
     if return_angle:
-        return line_at_angle(start_pt, angle, length), angle
+        return line_at_angle(start_pt, angle, length, back_length=back_length), angle
     else:
-        return line_at_angle(start_pt, angle, length)
+        return line_at_angle(start_pt, angle, length, back_length=back_length)
 
 
-def line_at_angle(start_pt, angle, length):
+def line_at_angle(start_pt, angle, length, back_length=0):
     """
-    Creates ADPolyline starting at start_pt, in direction, for length
+    Creates ADPolyline starting at start_pt, in direction, for length.
+    Returned line goes past start_pt for a distance of back_length in the opposite of direction
+    for intersection purposes
     :param start_pt: ADPoint
     :param angle: direction in radians. 0 is right, 90 is up
     :param length: length, float
     :return: ADPolyline
     """
-    start_x = start_pt.X
-    start_y = start_pt.Y
-    end_x = cos(angle)*length + start_x
-    end_y = sin(angle)*length + start_y
+    start_x = start_pt.X - cos(angle)*back_length
+    start_y = start_pt.Y - sin(angle)*back_length
+    end_x = cos(angle)*length + start_pt.X
+    end_y = sin(angle)*length + start_pt.Y
 
+    start_pt = geo_tools.ADPoint(X=start_x, Y=start_y)
     end_pt = geo_tools.ADPoint(X=end_x, Y=end_y)
     return geo_tools.ADPolyline(vertices=[start_pt, end_pt])
 
@@ -143,12 +152,12 @@ def intersect_angles(left_line, right_line, x_line):
         else:
             return angle
 
-    left_inter_pt = left_line.intersection(x_line)
-    if left_inter_pt is None:
-        raise NoIntersect('left_line does not intersect x_line')
     right_inter_pt = right_line.intersection(x_line)
     if right_inter_pt is None:
         raise NoIntersect('right_line does not intersect x_line')
+    left_inter_pt = left_line.intersection(x_line)
+    if left_inter_pt is None:
+        raise NoIntersect('left_line does not intersect x_line')
 
     _, left_br_point = left_line.bracket(left_inter_pt)
     _, right_br_point = right_line.bracket(right_inter_pt)
