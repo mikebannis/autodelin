@@ -73,8 +73,8 @@ def main():
         al.optimized_x_line(left_line, right_line, start_pt, 1000)
         start_pt.plot(marker='o')
 
-    pyplot.axes().set_aspect('equal', 'datalim')
-    pyplot.show()
+        pyplot.axes().set_aspect('equal', 'datalim')
+        pyplot.show()
 
 
 if __name__ == '__main__':

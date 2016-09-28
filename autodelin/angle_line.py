@@ -1,9 +1,10 @@
 from numpy import arange
 import geo_tools
 from math import pi, radians, cos, sin, degrees
+from matplotlib import pyplot
 
 tolerance = 0.001  # tolerance for determining if points are on line
-
+BADSCORE = 999
 
 class NoIntersect(Exception):
     pass
@@ -34,6 +35,7 @@ def optimized_x_line(left_line, right_line, start_pt, length, spread=0.75*pi, in
     else:
         perp_line, perp_angle = perpendicular_line(start_pt, right_line, length, direction='left', return_angle=True,
                                                    back_length=1)
+    perp_line.angle = perp_angle
 
     # Ensure initial tests is odd
     if initial_tests % 2 == 0:
@@ -47,12 +49,14 @@ def optimized_x_line(left_line, right_line, start_pt, length, spread=0.75*pi, in
     # Create lines clockwise of perp line
     for angle in arange(start, perp_angle, angle_step):
         temp_line = line_at_angle(start_pt, angle, length, back_length=1)
+        temp_line.angle = angle
         test_lines.append(temp_line)
     # Add perp line
     test_lines.append(perp_line)
     # Create lines CCW of perp_line
     for angle in arange(perp_angle+angle_step, end, angle_step):
         temp_line = line_at_angle(start_pt, angle, length, back_length=1)
+        temp_line.angle = angle
         test_lines.append(temp_line)
 
     for i, line in enumerate(test_lines):
@@ -61,7 +65,49 @@ def optimized_x_line(left_line, right_line, start_pt, length, spread=0.75*pi, in
         line.label(text=str(i)+'/'+str(round(degrees(score), 0)), reverse=True)
         line.plot()
 
-    # iterate until line is optimized
+    pyplot.axes().set_aspect('equal', 'datalim')
+    pyplot.show()
+
+    # Score lines
+    for line in test_lines:
+        score = rate_line(left_line, right_line, line)
+        line.score = score
+
+    # Find best two lines to start with
+    # TODO: check for line with "perfect" score
+    def opposite_signs(a, b):
+        if a < 0 < b:
+            return True
+        elif a > 0 > b:
+            return True
+        else:
+            return False
+
+    for i, line in enumerate(test_lines):
+        if line.score != BADSCORE:
+            last_line = line
+            test_lines = test_lines[i+1:]
+            break
+    else:
+        raise NoIntersect('No test lines intersect both contours.')
+
+    for line in test_lines:
+        if opposite_signs(last_line.score, line.score):
+            # Found it!
+            print 'found it:', degrees(last_line.score), degrees(line.score)
+            break
+        else:
+            last_line = line
+    else:
+        raise ValueError('no good line pair found')
+
+
+class AngleOptimize(object):
+    """
+    Used to find the xing line with the best balance between contours using a recursive function
+    """
+    def __init__(self, left_line, right_line, ):
+        pass
 
 
 def rate_line(left_line, right_line, test_line):
@@ -77,7 +123,7 @@ def rate_line(left_line, right_line, test_line):
         print degrees(a), degrees(b)
     except NoIntersect as e:
         print 'no intersect', e
-        return radians(999)
+        return radians(BADSCORE)
     return a - b
 
 
@@ -152,6 +198,7 @@ def intersect_angles(left_line, right_line, x_line):
         else:
             return angle
 
+    # TODO: handle multiple intersects
     right_inter_pt = right_line.intersection(x_line)
     if right_inter_pt is None:
         raise NoIntersect('right_line does not intersect x_line')
