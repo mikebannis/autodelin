@@ -245,7 +245,7 @@ def line_at_angle(start_pt, angle, length, back_length=0):
     end_pt = geo_tools.ADPoint(X=end_x, Y=end_y)
     return geo_tools.ADPolyline(vertices=[start_pt, end_pt])
 
-
+# TODO - move into BetterXLine
 def intersect_angles(left_line, right_line, x_line):
     """
     Returns the interior, "downstream", angles formed by left_line/x_line and right_line/x_line
@@ -262,6 +262,9 @@ def intersect_angles(left_line, right_line, x_line):
             return angle
 
     # TODO: handle multiple intersects
+    # TODO: DO ME FIRST!!!!!!!!!!!!!!!!!!!!!!!
+    # TODO: DO ME FIRST!!!!!!!!!
+    # TODO: DO ME FIRST!!!!!!!!!!!!!!!!!!!!!!!
     right_inter_pt = right_line.intersection(x_line)
     if right_inter_pt is None:
         raise NoIntersect('right_line does not intersect x_line')
