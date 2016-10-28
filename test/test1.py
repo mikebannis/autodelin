@@ -78,7 +78,8 @@ def main():
         start_pt.label(str(i))
         print '-'*30+'start_ptn #', i
         try:
-            best_line = al.optimized_x_line(left_line, right_line, start_pt, 1000)
+            bxl = al.BetterXLine(left_line, right_line, start_pt)
+            best_line = bxl.create()
             best_line.plot()
             print 'best_line successfully created'
         except Exception as e:

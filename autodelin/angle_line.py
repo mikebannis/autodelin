@@ -13,122 +13,128 @@ class NoIntersect(Exception):
     pass
 
 
-def optimized_x_line(left_line, right_line, start_pt, length, spread=0.75*pi, initial_tests=7):
+class BetterXLine(object):
     """
-    Creates angle optimized crossing line between left_line and right_line, starting at start_pt. start_pt must be
-    on right or left_line.
-    :param left_line: ADPolyline
-    :param right_line: ADPolyline
-    :param start_pt: ADPoint
-    :param length: float - length of x_line
-    :param spread: float - width of fan for initial search, in radians
-    :param initial_tests - number of lines for initial search. this is rounded up if even to an odd number
-    :return: ADPolyline
+    Creates and returns angle optimized crossing line between left_line and right_line starting at start_pt.
     """
-    if abs(left_line.distance_to(start_pt)) < tolerance:
-        side = 'left'
-    elif abs(right_line.distance_to(start_pt)) < tolerance:
-        side = 'right'
-    else:
-        raise AttributeError('start_pt is not on left_line or right_line')
 
-    # Create perpendicular (first) line
-    if side == 'left':
-        perp_line, perp_angle = perpendicular_line(start_pt, left_line, length, direction='right', return_angle=True)
-    else:
-        perp_line, perp_angle = perpendicular_line(start_pt, right_line, length, direction='left', return_angle=True,
-                                                   back_length=1)
-    perp_line.angle = perp_angle
+    def __init__(self, left_line, right_line, start_pt):
+        self.left_line = left_line  # ADPolyline - left contour
+        self.right_line = right_line  # ADPolyline - right contour
+        self.start_pt = start_pt    # ADPoint - must lie on either contour
 
-    # Ensure initial tests is odd
-    if initial_tests % 2 == 0:
-        initial_tests += 1
+        self.spread = 0.75*pi   # float - width of fan for inital search (radians)
+        self.initial_tests = 7  # int - number of lines for initial search, rounded up if even
+        self.iterations = 0  # current iteration - used in _optimize()
+        self.back_length = 1  # used in _optimize()
+        self.max_iters = 10  # max iterations -used in _optimize()
+        # TODO - determine self.length automatically
+        self.length = 1000  # length is determined automatically based on greatest width of left_line and right_line
+        self.side = None  # Which side is start_pt on? determined below
 
-    # --------- Create initial lines
-    angle_step = spread / (initial_tests - 1)
-    start = perp_angle - spread/2.0
-    end = perp_angle + spread/2.0 + angle_step
-    test_lines = []
-    # Create lines clockwise of perp line
-    for angle in arange(start, perp_angle, angle_step):
-        temp_line = line_at_angle(start_pt, angle, length, back_length=1)
-        temp_line.angle = angle
-        test_lines.append(temp_line)
-    # Add perp line
-    test_lines.append(perp_line)
-    # Create lines CCW of perp_line
-    for angle in arange(perp_angle+angle_step, end, angle_step):
-        temp_line = line_at_angle(start_pt, angle, length, back_length=1)
-        temp_line.angle = angle
-        test_lines.append(temp_line)
-
-    if True:
-        for i, line in enumerate(test_lines):
-            print 'test line:', i
-            score = rate_line(left_line, right_line, line)
-            line.label(text=str(i)+'/'+str(round(degrees(score), 0)), reverse=True)
-            line.plot()
-
-    # Score lines
-    for line in test_lines:
-        score = rate_line(left_line, right_line, line)
-        line.score = score
-
-    # Find best two lines to start with
-    # TODO: check for line with "perfect" score
-
-    for i, line in enumerate(test_lines):
-        if line.score != BADSCORE:
-            last_line = line
-            test_lines = test_lines[i+1:]
-            break
-    else:
-        raise NoIntersect('No test lines intersect both contours.')
-
-    for line in test_lines:
-        if opposite_signs(last_line.score, line.score):
-            # Found it!
-            break
+        # Verify start_pt is on left or right_line
+        if abs(self.left_line.distance_to(self.start_pt)) < tolerance:
+            self.side = 'left'
+        elif abs(self.right_line.distance_to(self.start_pt)) < tolerance:
+            self.side = 'right'
         else:
-            last_line = line
-    else:
-        raise ValueError('no good line pair found')
+            raise AttributeError('start_pt is not on left_line or right_line')
 
-    #print '******** found it! angle 1/2 =', degrees(last_line.angle), degrees(line.angle)
-    #print ' score 1,2 =', degrees(last_line.score), degrees(line.score)
+        # Ensure initial tests is odd
+        if self.initial_tests % 2 == 0:
+            self.initial_tests += 1
 
-    ao = AngleOptimize(left_line, right_line, start_pt, length=length)
-    return ao.optimize(last_line, line)
+    def create(self):
+        """
+        Creates angle optimized crossing line between left_line and right_line, starting at start_pt. start_pt must be
+        on right or left_line.
+        :param left_line: ADPolyline
+        :param right_line: ADPolyline
+        :param start_pt: ADPoint
+        :param length: float - length of x_line
+        :param spread: float - width of fan for initial search, in radians
+        :param initial_tests - number of lines for initial search. this is rounded up if even to an odd number
+        :return: ADPolyline
+        """
+        # Create perpendicular (first) line
+        if self.side == 'left':
+            perp_line, perp_angle = perpendicular_line(self.start_pt, self.left_line, self.length, direction='right',
+                                                       return_angle=True) # TODO - should this have back_length?
+        else:
+            perp_line, perp_angle = perpendicular_line(self.start_pt, self.right_line, self.length, direction='left',
+                                                       return_angle=True, back_length=self.back_length)
+        perp_line.angle = perp_angle
 
+        # --------- Create initial lines
+        angle_step = self.spread / (self.initial_tests - 1)
+        start = perp_angle - self.spread/2.0
+        end = perp_angle + self.spread/2.0 + angle_step
+        test_lines = []
+        # Create lines clockwise of perp line
+        for angle in arange(start, perp_angle, angle_step):
+            temp_line = line_at_angle(self.start_pt, angle, self.length, back_length=1)
+            temp_line.angle = angle
+            test_lines.append(temp_line)
+        # Add perp line
+        test_lines.append(perp_line)
+        # Create lines CCW of perp_line
+        for angle in arange(perp_angle+angle_step, end, angle_step):
+            temp_line = line_at_angle(self.start_pt, angle, self.length, back_length=1)
+            temp_line.angle = angle
+            test_lines.append(temp_line)
 
-def opposite_signs(a, b):
-    """
-    Returns True is a and b have opposite signs (+/-) otherwise false
-    :param a: float or int
-    :param b: float or int
-    :return: boolean
-    """
-    if a < 0 < b:
-        return True
-    elif a > 0 > b:
-        return True
-    else:
-        return False
+        if True:  # DEBUG
+            for i, line in enumerate(test_lines):
+                print 'test line:', i
+                score = self._rate_line(line)
+                line.label(text=str(i)+'/'+str(round(degrees(score), 0)), reverse=True)
+                line.plot()
 
+        # Score lines
+        for line in test_lines:
+            score = self._rate_line(line)
+            line.score = score
 
-class AngleOptimize(object):
-    """
-    Used to find the xing line with the best balance between contours using a recursive function
-    """
-    def __init__(self, left_line, right_line, start_pt, length=1000, back_length=1):
-        self.left_line = left_line
-        self.right_line = right_line
-        self.start_pt = start_pt
-        self.length = length
-        self.back_length = back_length
-        self.iterations = 0
+        # Find best two lines to start with
+        # TODO: check for line with "perfect" score
 
-    def optimize(self, x_line1, x_line2):
+        for i, line in enumerate(test_lines):
+            if line.score != BADSCORE:
+                last_line = line
+                test_lines = test_lines[i+1:]
+                break
+        else:
+            raise NoIntersect('No test lines intersect both contours.')
+
+        for line in test_lines:
+            if opposite_signs(last_line.score, line.score):
+                # Found it!
+                break
+            else:
+                last_line = line
+        else:
+            raise ValueError('no good line pair found')
+
+        #print '******** found it! angle 1/2 =', degrees(last_line.angle), degrees(line.angle)
+        #print ' score 1,2 =', degrees(last_line.score), degrees(line.score)
+
+        return self._optimize(last_line, line)
+
+    def _rate_line(self, test_line):
+        """
+        Calculates score for test_line between right and left contours
+        :param test_line: ADPolyline
+        :return: score - float (radians)
+        """
+        try:
+            a, b = intersect_angles(self.left_line, self.right_line, test_line)
+            #print degrees(a), degrees(b)
+        except NoIntersect as e:
+            print 'No intersect:', e
+            return radians(BADSCORE)
+        return a - b
+
+    def _optimize(self, x_line1, x_line2):
         """
         Recursively find best angle-balanced crossing line between self.left_line and self.right_line
         Global angle_tol is used to determine when the line is balanced enough
@@ -144,7 +150,7 @@ class AngleOptimize(object):
         new_angle = (x_line2.angle + x_line1.angle)/2
         test_line = line_at_angle(self.start_pt, new_angle, self.length, back_length=self.back_length)
         test_line.angle = new_angle
-        test_line.score = rate_line(self.left_line, self.right_line, test_line)
+        test_line.score = self._rate_line(test_line)
 
         #print 'angle=', degrees(test_line.angle), 'score=', degrees(test_line.score)
 
@@ -164,33 +170,24 @@ class AngleOptimize(object):
 
         # Pick best pair and recurse
         if opposite_signs(x_line1.score, test_line.score):
-            return self.optimize(x_line1, test_line)
+            return self._optimize(x_line1, test_line)
         else:
-            return self.optimize(test_line, x_line2)
-
-    def smart_intersect(self):
-        """
-        jjj
-        :return:
-        """
-        pass
+            return self._optimize(test_line, x_line2)
 
 
-def rate_line(left_line, right_line, test_line):
+def opposite_signs(a, b):
     """
-    
-    :param left_line:
-    :param right_line:
-    :param test_line:
-    :return:
+    Returns True is a and b have opposite signs (+/-) otherwise false
+    :param a: float or int
+    :param b: float or int
+    :return: boolean
     """
-    try:
-        a, b = intersect_angles(left_line, right_line, test_line)
-        #print degrees(a), degrees(b)
-    except NoIntersect as e:
-        print 'No intersect:', e
-        return radians(BADSCORE)
-    return a - b
+    if a < 0 < b:
+        return True
+    elif a > 0 > b:
+        return True
+    else:
+        return False
 
 
 # TODO: If start_pt is a vertex, don't use the bracketing vertices, use the angles of the segments adjacent to the
