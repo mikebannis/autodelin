@@ -26,10 +26,10 @@
   <mapcanvas>
     <units>feet</units>
     <extent>
-      <xmin>-2756.3146923170129412</xmin>
-      <ymin>-4649.83342506325334398</ymin>
-      <xmax>4976.40609960139227042</xmax>
-      <ymax>1683.29989320476306602</ymax>
+      <xmin>-5411.30049405239151383</xmin>
+      <ymin>-3284.90686668964463024</ymin>
+      <xmax>4666.52563753607864783</xmax>
+      <ymax>4968.8783361045343554</ymax>
     </extent>
     <rotation>0</rotation>
     <projections>1</projections>
@@ -1125,7 +1125,7 @@ def my_form_open(dialog, layer, feature):
         </spatialrefsys>
       </srs>
       <provider encoding="System">ogr</provider>
-      <previewExpression></previewExpression>
+      <previewExpression>COALESCE( "id", '&lt;NULL>' )</previewExpression>
       <vectorjoins/>
       <layerDependencies/>
       <expressionfields/>

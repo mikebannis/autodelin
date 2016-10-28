@@ -2,9 +2,12 @@ from numpy import arange
 import geo_tools
 from math import pi, radians, cos, sin, degrees
 from matplotlib import pyplot
+import sys
 
 tolerance = 0.001  # tolerance for determining if points are on line
+angle_tol = radians(1)  # tolerance for determining angles are balanced
 BADSCORE = 999
+
 
 class NoIntersect(Exception):
     pass
@@ -18,7 +21,7 @@ def optimized_x_line(left_line, right_line, start_pt, length, spread=0.75*pi, in
     :param right_line: ADPolyline
     :param start_pt: ADPoint
     :param length: float - length of x_line
-    :param spread: float - width of fan for initial search
+    :param spread: float - width of fan for initial search, in radians
     :param initial_tests - number of lines for initial search. this is rounded up if even to an odd number
     :return: ADPolyline
     """
@@ -59,14 +62,12 @@ def optimized_x_line(left_line, right_line, start_pt, length, spread=0.75*pi, in
         temp_line.angle = angle
         test_lines.append(temp_line)
 
-    for i, line in enumerate(test_lines):
-        print 'test line:', i
-        score = rate_line(left_line, right_line, line)
-        line.label(text=str(i)+'/'+str(round(degrees(score), 0)), reverse=True)
-        line.plot()
-
-    pyplot.axes().set_aspect('equal', 'datalim')
-    pyplot.show()
+    if True:
+        for i, line in enumerate(test_lines):
+            print 'test line:', i
+            score = rate_line(left_line, right_line, line)
+            line.label(text=str(i)+'/'+str(round(degrees(score), 0)), reverse=True)
+            line.plot()
 
     # Score lines
     for line in test_lines:
@@ -75,13 +76,6 @@ def optimized_x_line(left_line, right_line, start_pt, length, spread=0.75*pi, in
 
     # Find best two lines to start with
     # TODO: check for line with "perfect" score
-    def opposite_signs(a, b):
-        if a < 0 < b:
-            return True
-        elif a > 0 > b:
-            return True
-        else:
-            return False
 
     for i, line in enumerate(test_lines):
         if line.score != BADSCORE:
@@ -94,19 +88,91 @@ def optimized_x_line(left_line, right_line, start_pt, length, spread=0.75*pi, in
     for line in test_lines:
         if opposite_signs(last_line.score, line.score):
             # Found it!
-            print 'found it:', degrees(last_line.score), degrees(line.score)
             break
         else:
             last_line = line
     else:
         raise ValueError('no good line pair found')
 
+    #print '******** found it! angle 1/2 =', degrees(last_line.angle), degrees(line.angle)
+    #print ' score 1,2 =', degrees(last_line.score), degrees(line.score)
+
+    ao = AngleOptimize(left_line, right_line, start_pt, length=length)
+    return ao.optimize(last_line, line)
+
+
+def opposite_signs(a, b):
+    """
+    Returns True is a and b have opposite signs (+/-) otherwise false
+    :param a: float or int
+    :param b: float or int
+    :return: boolean
+    """
+    if a < 0 < b:
+        return True
+    elif a > 0 > b:
+        return True
+    else:
+        return False
+
 
 class AngleOptimize(object):
     """
     Used to find the xing line with the best balance between contours using a recursive function
     """
-    def __init__(self, left_line, right_line, ):
+    def __init__(self, left_line, right_line, start_pt, length=1000, back_length=1):
+        self.left_line = left_line
+        self.right_line = right_line
+        self.start_pt = start_pt
+        self.length = length
+        self.back_length = back_length
+        self.iterations = 0
+
+    def optimize(self, x_line1, x_line2):
+        """
+        Recursively find best angle-balanced crossing line between self.left_line and self.right_line
+        Global angle_tol is used to determine when the line is balanced enough
+        :param x_line1: ADPolyline - crossing line (with x_line.score and x_line.angle)
+        :param x_line2: ADPolyline - crossing line (with x_line.score and x_line.angle)
+        :return:  ADPolyline
+        """
+        # Create and rate line betwen x_line1 and x_line2
+        self.iterations += 1
+        if self.iterations > 10:
+            sys.exit('exceeded iterations')
+
+        new_angle = (x_line2.angle + x_line1.angle)/2
+        test_line = line_at_angle(self.start_pt, new_angle, self.length, back_length=self.back_length)
+        test_line.angle = new_angle
+        test_line.score = rate_line(self.left_line, self.right_line, test_line)
+
+        #print 'angle=', degrees(test_line.angle), 'score=', degrees(test_line.score)
+
+        #x_line1.plot(color='red')
+        #x_line1.label(text=str(round(degrees(x_line1.angle), 0)), reverse=True)
+        #x_line2.plot(color='red')
+        #x_line2.label(text=str(round(degrees(x_line2.angle), 0)), reverse=True)
+        test_line.plot(color='black')
+        test_line.label(text=str(round(degrees(test_line.angle), 0)), reverse=True)
+        #pyplot.show()
+
+        # See if the line is good
+        if abs(test_line.score) < angle_tol:
+            test_line.plot(color='black')
+            test_line.label(text='*********', reverse=True)
+            return test_line
+
+        # Pick best pair and recurse
+        if opposite_signs(x_line1.score, test_line.score):
+            return self.optimize(x_line1, test_line)
+        else:
+            return self.optimize(test_line, x_line2)
+
+    def smart_intersect(self):
+        """
+        jjj
+        :return:
+        """
         pass
 
 
@@ -120,9 +186,9 @@ def rate_line(left_line, right_line, test_line):
     """
     try:
         a, b = intersect_angles(left_line, right_line, test_line)
-        print degrees(a), degrees(b)
+        #print degrees(a), degrees(b)
     except NoIntersect as e:
-        print 'no intersect', e
+        print 'No intersect:', e
         return radians(BADSCORE)
     return a - b
 

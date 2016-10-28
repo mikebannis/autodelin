@@ -68,13 +68,24 @@ def main():
 
     #theta_l, theta_r = al.intersect_angles(left_line, right_line, test1_line)
     #print degrees(theta_l), degrees(theta_r)
-    print 'start_pts is this many', len(start_pts)
-    for start_pt in start_pts:
-        al.optimized_x_line(left_line, right_line, start_pt, 1000)
-        start_pt.plot(marker='o')
 
-        pyplot.axes().set_aspect('equal', 'datalim')
-        pyplot.show()
+    print 'start_pts is this many', len(start_pts)
+    skip_list = [0, 2, 4, 5]
+    for i, start_pt in enumerate(start_pts):
+        if i in skip_list:
+            continue
+        start_pt.plot(marker='o')
+        start_pt.label(str(i))
+        print '-'*30+'start_ptn #', i
+        try:
+            best_line = al.optimized_x_line(left_line, right_line, start_pt, 1000)
+            best_line.plot()
+            print 'best_line successfully created'
+        except Exception as e:
+            print 'caught execption in test1', e
+
+    pyplot.axes().set_aspect('equal', 'datalim')
+    pyplot.show()
 
 
 if __name__ == '__main__':
