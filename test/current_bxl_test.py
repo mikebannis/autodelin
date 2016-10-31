@@ -70,21 +70,33 @@ def main():
     #print degrees(theta_l), degrees(theta_r)
 
     print 'start_pts is this many', len(start_pts)
-    skip_list = [0, 2, 4, 5]
+    #skip_list = [0, 2, 4, 5]
+    skip_list = []
+    do_list = [0, 1, 2, 3, 4, 5,6,7,8]
+    do_list = [ 3 ]
     for i, start_pt in enumerate(start_pts):
         if i in skip_list:
+            continue
+        if i not in do_list:
             continue
         start_pt.plot(marker='o')
         start_pt.label(str(i))
         print '-'*30+'start_ptn #', i
-        try:
-            bxl = al.BetterXLine(left_line, right_line, start_pt)
-            best_line = bxl.create()
-            best_line.plot()
-            print 'best_line successfully created'
-        except Exception as e:
-            print 'caught execption in test1', e
 
+        bxl = al.BetterXLine(left_line, right_line, start_pt)
+        bxl.length = 2000
+        bxl.max_iters = 20
+        if not True:
+            best_line = bxl.create()
+            print 'best_line successfully created'
+            best_line.plot(color='black')
+        else:
+            try:
+                best_line = bxl.create()
+                print 'best_line successfully created'
+                best_line.plot(color='black')
+            except Exception as e:
+                print 'caught execption in test1:', e
     pyplot.axes().set_aspect('equal', 'datalim')
     pyplot.show()
 

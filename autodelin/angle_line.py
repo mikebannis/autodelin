@@ -1,5 +1,5 @@
 from numpy import arange
-import geo_tools
+import geo_tools as gt
 from math import pi, radians, cos, sin, degrees
 from matplotlib import pyplot
 import sys
@@ -12,6 +12,8 @@ BADSCORE = 999
 class NoIntersect(Exception):
     pass
 
+class MaxIterations(Exception):
+    pass
 
 class BetterXLine(object):
     """
@@ -88,7 +90,7 @@ class BetterXLine(object):
                 print 'test line:', i
                 score = self._rate_line(line)
                 line.label(text=str(i)+'/'+str(round(degrees(score), 0)), reverse=True)
-                line.plot()
+                line.plot(color='orange')
 
         # Score lines
         for line in test_lines:
@@ -127,10 +129,11 @@ class BetterXLine(object):
         :return: score - float (radians)
         """
         try:
-            a, b = intersect_angles(self.left_line, self.right_line, test_line)
-            #print degrees(a), degrees(b)
+            a, b = self._intersect_angles(test_line)
+            print 'left/right angles:', round(degrees(a), 1), round(degrees(b), 1), 'at iterations', self.iterations
+            print 'score = ', round(degrees(a-b), 1)
         except NoIntersect as e:
-            print 'No intersect:', e
+            # print 'No intersect:', e
             return radians(BADSCORE)
         return a - b
 
@@ -144,8 +147,6 @@ class BetterXLine(object):
         """
         # Create and rate line betwen x_line1 and x_line2
         self.iterations += 1
-        if self.iterations > 10:
-            sys.exit('exceeded iterations')
 
         new_angle = (x_line2.angle + x_line1.angle)/2
         test_line = line_at_angle(self.start_pt, new_angle, self.length, back_length=self.back_length)
@@ -158,21 +159,144 @@ class BetterXLine(object):
         #x_line1.label(text=str(round(degrees(x_line1.angle), 0)), reverse=True)
         #x_line2.plot(color='red')
         #x_line2.label(text=str(round(degrees(x_line2.angle), 0)), reverse=True)
-        test_line.plot(color='black')
-        test_line.label(text=str(round(degrees(test_line.angle), 0)), reverse=True)
+        test_line.plot(color='red')
+        test_line.label(text=str(self.iterations)+'/'+str(round(degrees(test_line.score), 1)), reverse=True)
         #pyplot.show()
 
         # See if the line is good
         if abs(test_line.score) < angle_tol:
             test_line.plot(color='black')
-            test_line.label(text='*********', reverse=True)
+            test_line.label(text='GOOD/' + str(round(degrees(test_line.score), 1)), reverse=True)
             return test_line
+
+        # If past max iterations, return best line
+        # TODO - while this is acceptable, there should be some check that things are converging around a point,
+        # TODO - e.g. a test that enough iterations happened that the angular diff between lines is acceptable
+        if self.iterations > self.max_iters:
+            #raise MaxIterations('Exceeded ' + str(self.max_iters) + ' while optimizing.')
+            scores = [x_line1, test_line, x_line2]
+            scores.sort(key=lambda x: abs(x.score))
+            return scores[0]
 
         # Pick best pair and recurse
         if opposite_signs(x_line1.score, test_line.score):
             return self._optimize(x_line1, test_line)
         else:
             return self._optimize(test_line, x_line2)
+
+    # TODO - move into BetterXLine
+    def _intersect_angles(self, x_line):
+        """
+        Returns the interior, "downstream", angles formed by left_line/x_line and right_line/x_line
+        Raises NoIntersect if a line doesn't cross
+        :param x_line: ADPolyline - line crossing both contours
+        :return:  (float, float) - left angle (radians), right angle (radians)
+        """
+        def positive(angle):
+            """ Returns angle, adjusted to be positive"""
+            if angle < 0.0:
+                return angle + 2*pi
+            else:
+                return angle
+
+        right_inter_pt = self.right_line.intersection(x_line)
+        if right_inter_pt is None:
+            raise NoIntersect('right_line does not intersect x_line')
+        left_inter_pt = self.left_line.intersection(x_line)
+        if left_inter_pt is None:
+            raise NoIntersect('left_line does not intersect x_line')
+
+        # check for multiple intersections
+        if type(right_inter_pt) is list or type(left_inter_pt) is list:
+            left_inter_pt, right_inter_pt = self._smart_intersect(left_inter_pt, right_inter_pt, x_line)
+
+        _, left_br_point = self.left_line.bracket(left_inter_pt)
+        _, right_br_point = self.right_line.bracket(right_inter_pt)
+
+        # left_angle
+        theta1 = left_inter_pt.angle(left_br_point)
+        theta2 = left_inter_pt.angle(right_inter_pt)
+        theta_left = positive(theta1 - theta2)
+
+        # right_angle
+        theta1 = right_inter_pt.angle(right_br_point)
+        theta2 = right_inter_pt.angle(left_inter_pt)
+        theta_right = positive(theta2 - theta1)
+        return theta_left, theta_right
+
+    def _smart_intersect(self, left_inters, right_inters, x_line):
+        """
+        Intersects xline with self.left_line and self.right_line and returns intersection points. If there are
+        multiple intersects, returns the two appropriate points based on self.start_pt
+        :param xline: ADPolyline
+        :return: ADPoint, ADPoint - left intersect, right intersect
+        """
+        # Process left points and measure position along x_line
+        points = []
+        if type(left_inters) is list:
+            for pt in left_inters:
+                pt.pos = x_line.project(pt)
+                pt.side = 'left'
+                points.append(pt)
+        elif type(left_inters) is gt.ADPoint:
+            left_inters.pos = x_line.project(left_inters)
+            left_inters.side = 'left'
+            points.append(left_inters)
+        elif type(left_inters) is gt.ADPolyline:
+            raise Exception('_smart_intersect got ADPolyline passed for left_inters.')
+        else:
+            raise Exception('_smart_intersect got unknown type passed for left_inters.')
+
+        # Process right points and measure position along x_line
+        if type(right_inters) is list:
+            # list of points
+            for pt in right_inters:
+                pt.pos = x_line.project(pt)
+                pt.side = 'right'
+                points.append(pt)
+        elif type(right_inters) is gt.ADPoint:
+            # single point
+            right_inters.pos = x_line.project(right_inters)
+            right_inters.side = 'right'
+            points.append(right_inters)
+        elif type(left_inters) is gt.ADPolyline:
+            raise Exception('_smart_intersect got ADPolyline passed for left_inters.')
+        else:
+            raise Exception('_smart_intersect got unknown type passed for left_inters.')
+
+        # Sort points by distance along x_line
+        points.sort(key=lambda x: x.pos)
+
+        pt1 = None; pt2 = None
+
+        # Check if first point is self.start_pt
+        if self.start_pt.distance_to(points[0]) < tolerance:
+            pt1 = points[0]
+            pt2 = points[1]
+        # Check if last point is self.start_pt
+        elif self.start_pt.distance_to(points[-1]) < tolerance:
+            pt1 = points[-1]
+            pt2 = points[-2]
+        # Somewhere in the middle
+        else:
+            for i in range(1, len(points)-1):
+                # find point at same spot as self.start_pt
+                if points[i].distance_to(self.start_pt) < tolerance:
+                    pt1 = points[i]
+                    if points[i-1].side != self.side:
+                        pt2 = points[i-1]
+                    elif points[i+1].side != self.side:
+                        pt2 = points[i+1]
+                    else:
+                        # Should never get here
+                        raise Exception('should never get here, not right')
+        assert pt1 is not None and pt2 is not None
+
+        # Return points left first, then right
+        if self.side == 'left':
+            return pt1, pt2
+        else:
+            return pt2, pt1
 
 
 def opposite_signs(a, b):
@@ -241,50 +365,9 @@ def line_at_angle(start_pt, angle, length, back_length=0):
     end_x = cos(angle)*length + start_pt.X
     end_y = sin(angle)*length + start_pt.Y
 
-    start_pt = geo_tools.ADPoint(X=start_x, Y=start_y)
-    end_pt = geo_tools.ADPoint(X=end_x, Y=end_y)
-    return geo_tools.ADPolyline(vertices=[start_pt, end_pt])
-
-# TODO - move into BetterXLine
-def intersect_angles(left_line, right_line, x_line):
-    """
-    Returns the interior, "downstream", angles formed by left_line/x_line and right_line/x_line
-    Raises NoIntersect if a line doesn't cross
-    :param left_line: ADPolyline - river left contour
-    :param right_line:  ADPolyline - river right contour
-    :param x_line: ADPolyline - line crossing both contours
-    :return:  (float, float) - left angle (radians), right angle (radians)
-    """
-    def positive(angle):
-        if angle < 0.0:
-            return angle + 2*pi
-        else:
-            return angle
-
-    # TODO: handle multiple intersects
-    # TODO: DO ME FIRST!!!!!!!!!!!!!!!!!!!!!!!
-    # TODO: DO ME FIRST!!!!!!!!!
-    # TODO: DO ME FIRST!!!!!!!!!!!!!!!!!!!!!!!
-    right_inter_pt = right_line.intersection(x_line)
-    if right_inter_pt is None:
-        raise NoIntersect('right_line does not intersect x_line')
-    left_inter_pt = left_line.intersection(x_line)
-    if left_inter_pt is None:
-        raise NoIntersect('left_line does not intersect x_line')
-
-    _, left_br_point = left_line.bracket(left_inter_pt)
-    _, right_br_point = right_line.bracket(right_inter_pt)
-
-    # left_angle
-    theta1 = left_inter_pt.angle(left_br_point)
-    theta2 = left_inter_pt.angle(right_inter_pt)
-    theta_left = positive(theta1 - theta2)
-
-    # right_angle
-    theta1 = right_inter_pt.angle(right_br_point)
-    theta2 = right_inter_pt.angle(left_inter_pt)
-    theta_right = positive(theta2 - theta1)
-    return theta_left, theta_right
+    start_pt = gt.ADPoint(X=start_x, Y=start_y)
+    end_pt = gt.ADPoint(X=end_x, Y=end_y)
+    return gt.ADPolyline(vertices=[start_pt, end_pt])
 
 
 def main():
@@ -293,7 +376,7 @@ def main():
 
     outfile = '../scratch/angle_test_out.shp'
 
-    origin = geo_tools.ADPoint(X=0, Y=0)
+    origin = gt.ADPoint(X=0, Y=0)
     lines = []
     for angle in range(0, 360, 15):
         new_line = line_at_angle(origin, angle, 10000)
