@@ -95,9 +95,10 @@ class BetterXLine(object):
         if DEBUG_FAN:
             for i, line in enumerate(test_lines):
                 print 'test line:', i
-                score = self._rate_line(line)
+                score =  self._rate_line(line)
                 line.label(text=str(i)+'/'+str(round(degrees(score), 0)), reverse=True)
                 line.plot(color='orange')
+
 
         # Score lines
         for line in test_lines:
@@ -286,6 +287,11 @@ class BetterXLine(object):
         # Sort points by distance along x_line
         points.sort(key=lambda x: x.pos)
 
+        if DEBUG_RATE_LINE:
+            print len(points), ' points'
+            for pt in points:
+                print pt, pt.side
+
         pt1 = None; pt2 = None
 
         # Check if first point is self.start_pt
@@ -309,7 +315,12 @@ class BetterXLine(object):
                     else:
                         # Should never get here
                         raise ALException('should never get here, not right')
-        assert pt1 is not None and pt2 is not None
+
+        # Look out for no intersect case, cause weird line angle and shapley behaving weirdly
+        if pt1 is None and pt2 is None:
+            raise NoIntersect('self.start_pt is not in intersects. Bad line.')
+
+        assert pt1 is not None or pt2 is not None
 
         # Return points left first, then right
         if self.side == 'left':

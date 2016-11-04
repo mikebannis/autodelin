@@ -51,7 +51,24 @@ def main():
     test2(left_line, right_line)
 
 
+def test3(left_line, right_line):
+    print '-'*20+' left line vertices'
+
+    vertex = left_line.vertices[9]
+    vertex.plot(marker='o')
+    bxl = al.BetterXLine(left_line, right_line, vertex)
+    bxl.length = 4000
+    best_line = bxl.create()
+
+    best_line.plot(color='yellow')
+    pyplot.axes().set_aspect('equal', 'datalim')
+    pyplot.show()
+
+
 def test2(left_line, right_line):
+    """
+    Draw all xlines from vertices on both contours
+    """
     if True:
         print '-'*20+' right line vertices'
         for i, vertex in enumerate(right_line.vertices):
