@@ -32,7 +32,7 @@ def main():
         for feature in input_file:
             geo = shape(feature['geometry'])
             start_pt = gt.ADPoint(shapely_geo=geo)
-            print str(start_pt)
+            #print str(start_pt)
             start_pts.append(start_pt)
 
     with fiona.collection(test1_filename) as input_file:
@@ -40,40 +40,58 @@ def main():
             geo = shape(feature['geometry'])
             test1_line = gt.ADPolyline(shapely_geo=geo)
 
-    print 'left line=', left_line
-    print 'right line = ', right_line
-    print 'test line = ', test1_line
-
-
-   # l_intersect = left_line.intersection(test1_line)
-   # pointa, pointb = left_line.bracket(l_intersect)
-   # pointa.plot(marker='x')
-   # pointb.plot(marker='o')
-
-   # r_intersect = right_line.intersection(test1_line)
-   # pointa, pointb = right_line.bracket(r_intersect)
-   # pointa.plot(marker='x')
-   # pointb.plot(marker='o')
+    if not True:
+        print 'left line=', left_line
+        print 'right line = ', right_line
+        print 'test line = ', test1_line
 
     left_line.plot(color='red')
     right_line.plot(color='blue')
-    #r_intersect.plot(marker='o')
-    #l_intersect.plot(marker='o')
-    # test1_line.plot(color='black')
-   # test = al.perpendicular_line(start_pt, right_line, 2000, direction='right')
-   # test2 = al.perpendicular_line(start_pt, right_line, 2000, direction='left')
-   # test.plot()
-   # test2.plot()
+
+    test2(left_line, right_line)
 
 
-    #theta_l, theta_r = al.intersect_angles(left_line, right_line, test1_line)
-    #print degrees(theta_l), degrees(theta_r)
+def test2(left_line, right_line):
+    if True:
+        print '-'*20+' right line vertices'
+        for i, vertex in enumerate(right_line.vertices):
+            bxl = al.BetterXLine(left_line, right_line, vertex)
+            bxl.length = 4000
+            try:
+                best_line = bxl.create()
+            except Exception as e:
+                print 'EXCEPTION at vertex', i, e
+                vertex.plot(marker='o')
+                vertex.label(str(i))
+            except AssertionError as e:
+                print 'ASSERTION ERROR at vertex', i, e
+                vertex.plot(marker='o')
+                vertex.label(str(i))
+            else:
+                best_line.plot(color='black')
+    if True:
+        print '-'*20+' left line vertices'
+        for i, vertex in enumerate(left_line.vertices):
+            bxl = al.BetterXLine(left_line, right_line, vertex)
+            bxl.length = 4000
+            try:
+                best_line = bxl.create()
+            except Exception as e:
+                print 'EXCEPTION at vertex', i, e
+                vertex.plot(marker='o')
+                vertex.label(str(i))
+            else:
+                best_line.plot(color='yellow')
+    pyplot.axes().set_aspect('equal', 'datalim')
+    pyplot.show()
 
+
+def test1(left_line, right_line, start_pts):
     print 'start_pts is this many', len(start_pts)
     #skip_list = [0, 2, 4, 5]
     skip_list = []
     do_list = [0, 1, 2, 3, 4, 5,6,7,8]
-    do_list = [ 3 ]
+    do_list = [ 6 ]
     for i, start_pt in enumerate(start_pts):
         if i in skip_list:
             continue
@@ -84,7 +102,7 @@ def main():
         print '-'*30+'start_ptn #', i
 
         bxl = al.BetterXLine(left_line, right_line, start_pt)
-        bxl.length = 2000
+        bxl.length = 4000
         bxl.max_iters = 20
         if not True:
             best_line = bxl.create()
@@ -100,6 +118,27 @@ def main():
     pyplot.axes().set_aspect('equal', 'datalim')
     pyplot.show()
 
-
 if __name__ == '__main__':
     main()
+
+    # l_intersect = left_line.intersection(test1_line)
+    # pointa, pointb = left_line.bracket(l_intersect)
+    # pointa.plot(marker='x')
+    # pointb.plot(marker='o')
+
+    # r_intersect = right_line.intersection(test1_line)
+    # pointa, pointb = right_line.bracket(r_intersect)
+    # pointa.plot(marker='x')
+    # pointb.plot(marker='o')
+
+    #r_intersect.plot(marker='o')
+    #l_intersect.plot(marker='o')
+    # test1_line.plot(color='black')
+    # test = al.perpendicular_line(start_pt, right_line, 2000, direction='right')
+    # test2 = al.perpendicular_line(start_pt, right_line, 2000, direction='left')
+    # test.plot()
+    # test2.plot()
+
+
+    #theta_l, theta_r = al.intersect_angles(left_line, right_line, test1_line)
+    #print degrees(theta_l), degrees(theta_r)
