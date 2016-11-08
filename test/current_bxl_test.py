@@ -10,8 +10,8 @@ import autodelin.geo_tools as gt
 
 
 def main():
-    left_filename = 'shapes/left.shp'
-    right_filename = 'shapes/right.shp'
+    left_filename = 'shapes/left3.shp'
+    right_filename = 'shapes/right3.shp'
     start_filename = 'shapes/start.shp'
     test1_filename = 'shapes/test1.shp'
 
