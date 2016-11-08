@@ -10,10 +10,12 @@ import autodelin.geo_tools as gt
 
 
 def main():
-    left_filename = 'shapes/left3.shp'
-    right_filename = 'shapes/right3.shp'
+    left_filename = 'shapes/left2A.shp'
+    right_filename = 'shapes/right2A.shp'
     start_filename = 'shapes/start.shp'
     test1_filename = 'shapes/test1.shp'
+
+    print 'importing shapefiles...',
 
     with fiona.collection(left_filename, 'r') as input_file:
         for feature in input_file:
@@ -39,6 +41,8 @@ def main():
         for feature in input_file:
             geo = shape(feature['geometry'])
             test1_line = gt.ADPolyline(shapely_geo=geo)
+    
+    print 'Done.'
 
     if not True:
         print 'left line=', left_line
@@ -70,8 +74,10 @@ def test2(left_line, right_line):
     Draw all xlines from vertices on both contours
     """
     if True:
-        print '-'*20+' right line vertices'
+
+        print '-'*20+' right line vertices', len(right_line.vertices)
         for i, vertex in enumerate(right_line.vertices):
+            print 'processing #', i
             bxl = al.BetterXLine(left_line, right_line, vertex)
             bxl.length = 4000
             try:
@@ -98,7 +104,7 @@ def test2(left_line, right_line):
                 vertex.plot(marker='o')
                 vertex.label(str(i))
             else:
-                best_line.plot(color='yellow')
+                best_line.plot(color='orange')
     pyplot.axes().set_aspect('equal', 'datalim')
     pyplot.show()
 
