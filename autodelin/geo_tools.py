@@ -111,6 +111,7 @@ class ADPolyline(object):
 
         vertex_iter = iter(self.vertices[1:])
         for test_pt in vertex_iter:
+            # TODO - I think that self.project is the portion of code that really slows things down, this probably should involve some caching
             test_dist = pt_dist - self.project(test_pt)
             if test_dist > 0:
                 # Before point
