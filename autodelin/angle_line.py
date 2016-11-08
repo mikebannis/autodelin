@@ -135,22 +135,6 @@ class BetterXLine(object):
         short_line = gt.ADPolyline(vertices=iter_points)
         return short_line
 
-    def _rate_line(self, test_line):
-        """
-        Calculates score for test_line between right and left contours
-        :param test_line: ADPolyline
-        :return: score - float (radians)
-        """
-        try:
-            a, b = self._intersect_angles(test_line)
-            if DEBUG_RATE_LINE:
-                print 'left/right angles:', round(degrees(a), 1), round(degrees(b), 1), 'at iterations', self.iterations
-                print 'score = ', round(degrees(a-b), 1)
-        except NoIntersect as e:
-            # print 'No intersect:', e
-            return radians(BADSCORE)
-        return a - b
-
     def _optimize(self, x_line1, x_line2):
         """
         Recursively find best angle-balanced crossing line between self.left_line and self.right_line
@@ -194,13 +178,74 @@ class BetterXLine(object):
         else:
             return self._optimize(test_line, x_line2)
 
-    # TODO - move into BetterXLine
+#    def _rate_line(self, test_line):
+#        """
+#        Calculates score for test_line between right and left contours
+#        :param test_line: ADPolyline
+#        :return: score - float (radians)
+#        """
+#        try:
+#            a, b = self._intersect_angles(test_line)
+#            if DEBUG_RATE_LINE:
+#                print 'left/right angles:', round(degrees(a), 1), round(degrees(b), 1), 'at iterations', self.iterations
+#                print 'score = ', round(degrees(a-b), 1)
+#        except NoIntersect as e:
+#            # print 'No intersect:', e
+#            return radians(BADSCORE)
+#        return a - b
+#
+#    def _intersect_angles(self, x_line):
+#        """
+#        Returns the interior, "downstream", angles formed by left_line/x_line and right_line/x_line
+#        Raises NoIntersect if a line doesn't cross
+#        :param x_line: ADPolyline - line crossing both contours
+#        :return:  (float, float) - left angle (radians), right angle (radians)
+#        """
+#        def positive(angle):
+#            """ Returns angle, adjusted to be positive"""
+#            if angle < 0.0:
+#                return angle + 2*pi
+#            else:
+#                return angle
+#
+#        left_inter_pt, right_inter_pt = self._x_points(x_line)
+#
+#        _, left_br_point = self.left_line.bracket(left_inter_pt)
+#        _, right_br_point = self.right_line.bracket(right_inter_pt)
+#
+#        # left_angle
+#        theta1 = left_inter_pt.angle(left_br_point)
+#        theta2 = left_inter_pt.angle(right_inter_pt)
+#        theta_left = positive(theta1 - theta2)
+#
+#        # right_angle
+#        theta1 = right_inter_pt.angle(right_br_point)
+#        theta2 = right_inter_pt.angle(left_inter_pt)
+#        theta_right = positive(theta2 - theta1)
+#        return theta_left, theta_right
+
+    def _rate_line(self, test_line):
+        """
+        Calculates score for test_line between right and left contours
+        :param test_line: ADPolyline
+        :return: score - float (radians)
+        """
+        try:
+            a, b = self._intersect_angles(test_line)
+            if DEBUG_RATE_LINE:
+                print 'left/right angles:', round(degrees(a), 1), round(degrees(b), 1), 'at iterations', self.iterations
+                print 'score = ', round(degrees(a-b), 1)
+        except NoIntersect as e:
+            # print 'No intersect:', e
+            return radians(BADSCORE)
+        return a - b
+
     def _intersect_angles(self, x_line):
         """
-        Returns the interior, "downstream", angles formed by left_line/x_line and right_line/x_line
-        Raises NoIntersect if a line doesn't cross
+        Returns the difference between interior "downstream" and "upstream" angles formed by left_line/x_line and
+        right_line/x_line. Raises NoIntersect if a line doesn't cross
         :param x_line: ADPolyline - line crossing both contours
-        :return:  (float, float) - left angle (radians), right angle (radians)
+        :return:  (float, float) - left angle difference (radians), right angle difference (radians)
         """
         def positive(angle):
             """ Returns angle, adjusted to be positive"""
@@ -211,18 +256,31 @@ class BetterXLine(object):
 
         left_inter_pt, right_inter_pt = self._x_points(x_line)
 
-        _, left_br_point = self.left_line.bracket(left_inter_pt)
-        _, right_br_point = self.right_line.bracket(right_inter_pt)
+        up_left_br_point , dn_left_br_point = self.left_line.bracket(left_inter_pt)
+        up_right_br_point , dn_right_br_point = self.right_line.bracket(right_inter_pt)
 
-        # left_angle
-        theta1 = left_inter_pt.angle(left_br_point)
+        # left downstream angle
+        theta1 = left_inter_pt.angle(dn_left_br_point)
         theta2 = left_inter_pt.angle(right_inter_pt)
-        theta_left = positive(theta1 - theta2)
+        theta_left_dn = positive(theta1 - theta2)
 
-        # right_angle
-        theta1 = right_inter_pt.angle(right_br_point)
+        # left upstream angle
+        theta1 = left_inter_pt.angle(right_inter_pt)
+        theta2 = left_inter_pt.angle(up_left_br_point)
+        theta_left_up = positive(theta1 - theta2)
+        theta_left = theta_left_dn - theta_left_up
+
+        # right downstream angle
+        theta1 = right_inter_pt.angle(dn_right_br_point)
         theta2 = right_inter_pt.angle(left_inter_pt)
-        theta_right = positive(theta2 - theta1)
+        theta_right_dn = positive(theta2 - theta1)
+
+        # right upstream angle
+        theta1 = right_inter_pt.angle(left_inter_pt)
+        theta2 = right_inter_pt.angle(up_right_br_point)
+        theta_right_up = positive(theta2 - theta1)
+        theta_right = theta_right_dn - theta_right_up
+
         return theta_left, theta_right
 
     def _x_points(self, x_line):
@@ -246,10 +304,12 @@ class BetterXLine(object):
 
     def _smart_intersect(self, left_inters, right_inters, x_line):
         """
-        Intersects xline with self.left_line and self.right_line and returns intersection points. If there are
-        multiple intersects, returns the two appropriate points based on self.start_pt
-        :param xline: ADPolyline
-        :return: ADPoint, ADPoint - left intersect, right intersect
+        Finds "best" intersections out of left_inters and right_inters. Called by self._x_points() in case of multiple
+        intersections
+        :param left_inters: ADPoint, or list of ADPoints - intersections between x_line and self.left_contour
+        :param right_inters: ADPoint, or list of ADPoints - intersections between x_line and self.right_contour
+        :param x_line: ADPolyline - crossing line that created left_inters and right_inters
+        :return: ADPoint, ADPoint - left, rigtht
         """
         # Process left points and measure position along x_line
         points = []
