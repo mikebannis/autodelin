@@ -76,7 +76,7 @@ def test2(left_line, right_line):
     if True:
 
         print '-'*20+' right line vertices', len(right_line.vertices)
-        for i, vertex in enumerate(right_line.vertices[:500]):
+        for i, vertex in enumerate(right_line.vertices):
             print 'processing #', i
             bxl = al.BetterXLine(left_line, right_line, vertex)
             bxl.length = 4000
@@ -92,8 +92,7 @@ def test2(left_line, right_line):
                 vertex.label(str(i))
             else:
                 best_line.plot(color='black')
-
-    if not True:
+    if True:
         print '-'*20+' left line vertices'
         for i, vertex in enumerate(left_line.vertices):
             bxl = al.BetterXLine(left_line, right_line, vertex)
