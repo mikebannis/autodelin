@@ -39,6 +39,7 @@ class ADPolyline(object):
         self.shapely_geo = None  # shapely LineString object
         self.first_point = None  # ADPoint - first vertex of line
         self.last_point = None  # ADPoint - last vertex of line
+        self.measured = False # Used by self.bracket() to determine if vertice distances have been premeasured/cached
 
         if vertices is not None and shapely_geo is None:
             # vertices supplied, create geo
@@ -103,6 +104,12 @@ class ADPolyline(object):
         :param point: ADPoint
         :return: (ADPoint, ADPoint) (vertex before point, vertex after point)
         """
+        # On first use of bracket, premeasure position of all vertices. This is for speed (v0.2)
+        if not self.measured:
+            for vertex in self.vertices:
+                vertex.dist = self.project(vertex)
+            self.measured = True
+
         point1 = None  # Vertex immediately before point
         point2 = None  # Vertex immediately after point
 
@@ -111,7 +118,7 @@ class ADPolyline(object):
 
         vertex_iter = iter(self.vertices[1:])
         for test_pt in vertex_iter:
-            test_dist = pt_dist - self.project(test_pt)
+            test_dist = pt_dist - test_pt.dist
             if test_dist > 0:
                 # Before point
                 point1 = test_pt
